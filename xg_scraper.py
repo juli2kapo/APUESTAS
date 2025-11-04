@@ -235,7 +235,13 @@ class FootballXGScraper:
 
     def __init__(self):
         self.headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.5',
+            'Accept-Encoding': 'gzip, deflate, br',
+            'DNT': '1',
+            'Connection': 'keep-alive',
+            'Upgrade-Insecure-Requests': '1'
         }
         self.session = requests.Session()
         self.session.headers.update(self.headers)
@@ -722,14 +728,17 @@ class FootballXGScraper:
 
                 # Extract data
                 try:
-                    date_cell = row.find('th', {'data-stat': 'date'})
+                    # FBref uses <td> for dates, not <th>
+                    date_cell = row.find('td', {'data-stat': 'date'})
                     if not date_cell:
                         continue
 
                     date_str = date_cell.text.strip()
+                    if not date_str:  # Skip rows without dates
+                        continue
 
-                    # Get time if available
-                    time_cell = row.find('td', {'data-stat': 'time'})
+                    # Get time if available (FBref uses 'start_time' not 'time')
+                    time_cell = row.find('td', {'data-stat': 'start_time'})
                     time_str = time_cell.text.strip() if time_cell else ""
 
                     # Combine date and time
@@ -743,9 +752,15 @@ class FootballXGScraper:
                     for cell in cells:
                         stat_type = cell.get('data-stat', '')
                         if stat_type == 'home_team':
+                            # Remove country codes (e.g., "eng Arsenal" or "Juventus it")
                             home_team = cell.text.strip()
+                            # Remove 2-3 letter lowercase country codes (before or after team name)
+                            home_team = re.sub(r'\b[a-z]{2,3}\b\s*', '', home_team).strip()
                         elif stat_type == 'away_team':
+                            # Remove country codes (e.g., "de Bayern Munich" or "Monaco fr")
                             away_team = cell.text.strip()
+                            # Remove 2-3 letter lowercase country codes (before or after team name)
+                            away_team = re.sub(r'\b[a-z]{2,3}\b\s*', '', away_team).strip()
                         elif stat_type == 'score':
                             score = cell.text.strip()
 
