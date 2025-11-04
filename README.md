@@ -1,14 +1,35 @@
 # Football xG Scraper & Over/Under 2.5 Goals Analysis Tool
 
-A Python tool for scraping expected goals (xG) data and predicting over/under 2.5 goals in football matches.
+**Automatically scrape upcoming football matches and predict over/under 2.5 goals using advanced xG analysis.**
+
+## 🚀 Quick Start
+
+```bash
+# Install dependencies
+pip install -r requirements.txt
+
+# Run the scraper
+python xg_scraper.py
+
+# Choose option 1 (AUTO-SCRAPE)
+# Sit back and watch it automatically:
+#   ✅ Scrape upcoming Premier League fixtures
+#   ✅ Get each team's xG/xGA data (with home/away splits)
+#   ✅ Analyze using Poisson probability model
+#   ✅ Generate predictions report
+```
+
+**That's it! No manual input needed.**
 
 ## 🎯 Purpose
 
-This script helps you:
-- Analyze xG (expected goals) and xGA (expected goals against) metrics
-- Predict whether matches will go OVER or UNDER 2.5 goals
-- Make data-driven betting decisions using advanced metrics
-- Work with AI tools to enhance your football analysis
+This tool **automatically**:
+- Scrapes upcoming football fixtures (Premier League)
+- Scrapes xG (expected goals) and xGA (expected goals against) data
+- Uses venue-specific stats (home vs away) for higher accuracy
+- Predicts whether matches will go OVER or UNDER 2.5 goals
+- Provides statistical probabilities using Poisson distribution
+- Works perfectly with AI tools for enhanced analysis
 
 ## 📊 Key Metrics for Over/Under 2.5 Prediction
 
@@ -110,16 +131,61 @@ python xg_scraper.py
 
 ### Three Modes Available:
 
-#### 1. **Demo Mode** (Recommended for first run)
+#### 1. **🤖 AUTO-SCRAPE Mode** (PRIMARY FEATURE - What you want!)
+```
+Choose mode: 1
+```
+**This is the main feature! It does everything automatically:**
+
+✅ Scrapes upcoming Premier League fixtures from FBref
+✅ For each match, scrapes both teams' xG/xGA data from Understat
+✅ **Automatically includes home/away splits for accuracy**
+✅ Analyzes all matches using Poisson probability model
+✅ Generates comprehensive predictions report
+✅ Optional JSON export for AI analysis
+
+**What happens:**
+```
+🔍 Fetching fixtures from FBref...
+✅ Found 10 upcoming fixtures
+
+[1/10] Arsenal vs Chelsea
+--------------------------------------------------------------
+🏠 Scraping Arsenal data...
+  ✅ Arsenal at home: 2.1 xG, 0.8 xGA
+🛫 Scraping Chelsea data...
+  ✅ Chelsea away: 1.6 xG, 1.3 xGA
+  🔮 Analyzing...
+  📊 Prediction: OVER 2.5 (64.2% confidence)
+
+[2/10] Manchester United vs Liverpool
+...
+```
+
+**No manual input needed! Just run and get predictions.**
+
+**Data Sources Used:**
+- Fixtures: FBref.com (upcoming matches)
+- Team Stats: Understat.com (xG/xGA with home/away splits)
+- Analysis: Advanced Poisson probability model
+
+**Limitations:**
+- Currently supports Premier League only (easy to extend)
+- Requires internet connection
+- May be rate-limited if run too frequently
+- Some team names may need adjustment in normalize_team_name()
+
+#### 2. **Demo Mode** (Recommended for first run)
 ```
 Choose mode: 3
 ```
 - See sample predictions with realistic data
 - Understand the output format
+- Test without internet connection
 
-#### 2. **Manual Entry Mode** ⭐ BEST FOR REAL ANALYSIS
+#### 3. **Manual Entry Mode**
 ```
-Choose mode: 1
+Choose mode: 2
 ```
 - Enter fixtures and team stats manually
 - **Use venue-specific stats for best accuracy!**
@@ -161,12 +227,11 @@ On **FBref.com**:
 3. Filter by "Home" or "Away"
 4. Calculate average from recent matches
 
-#### 3. **Auto-Scrape Mode** (Experimental)
-```
-Choose mode: 2
-```
-- Automated scraping (may require customization)
-- You can extend to scrape from your preferred sources
+**Use This Mode When:**
+- Auto-scraping fails for a specific team
+- You want to analyze a different league
+- You have more recent/accurate data manually
+- Testing specific scenarios
 
 ## 📈 Output Example
 

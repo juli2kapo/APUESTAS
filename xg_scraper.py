@@ -81,29 +81,165 @@ class FootballXGScraper:
             return {}
 
     def _process_understat_data(self, data: List[Dict]) -> Dict:
-        """Process raw Understat data to calculate relevant metrics"""
+        """Process raw Understat data to calculate overall AND home/away specific metrics"""
         if not data:
             return {}
 
         # Get last 10 matches for recent form
         recent_matches = data[-10:] if len(data) >= 10 else data
 
+        # Separate home and away matches
+        home_matches = [m for m in recent_matches if m.get('h_a') == 'h']
+        away_matches = [m for m in recent_matches if m.get('h_a') == 'a']
+
+        # Overall stats
         total_xg = sum(float(match.get('xG', 0)) for match in recent_matches)
         total_xga = sum(float(match.get('xGA', 0)) for match in recent_matches)
         total_goals = sum(int(match.get('scored', 0)) for match in recent_matches)
         total_conceded = sum(int(match.get('missed', 0)) for match in recent_matches)
-
         num_matches = len(recent_matches)
 
-        return {
+        result = {
             'avg_xg': round(total_xg / num_matches, 2) if num_matches > 0 else 0,
             'avg_xga': round(total_xga / num_matches, 2) if num_matches > 0 else 0,
             'avg_goals_scored': round(total_goals / num_matches, 2) if num_matches > 0 else 0,
             'avg_goals_conceded': round(total_conceded / num_matches, 2) if num_matches > 0 else 0,
             'total_matches': num_matches,
             'over_25_count': sum(1 for m in recent_matches if int(m.get('scored', 0)) + int(m.get('missed', 0)) > 2.5),
-            'recent_form': recent_matches[-5:] if len(recent_matches) >= 5 else recent_matches
         }
+
+        # Home-specific stats
+        if home_matches:
+            home_xg = sum(float(m.get('xG', 0)) for m in home_matches)
+            home_xga = sum(float(m.get('xGA', 0)) for m in home_matches)
+            home_count = len(home_matches)
+
+            result['avg_xg_home'] = round(home_xg / home_count, 2)
+            result['avg_xga_home'] = round(home_xga / home_count, 2)
+            result['home_matches'] = home_count
+
+        # Away-specific stats
+        if away_matches:
+            away_xg = sum(float(m.get('xG', 0)) for m in away_matches)
+            away_xga = sum(float(m.get('xGA', 0)) for m in away_matches)
+            away_count = len(away_matches)
+
+            result['avg_xg_away'] = round(away_xg / away_count, 2)
+            result['avg_xga_away'] = round(away_xga / away_count, 2)
+            result['away_matches'] = away_count
+
+        return result
+
+    def normalize_team_name(self, team_name: str) -> str:
+        """
+        Normalize team names for Understat compatibility
+        """
+        # Team name mappings for Understat
+        team_mapping = {
+            'Brighton & Hove Albion': 'Brighton',
+            'Brighton and Hove Albion': 'Brighton',
+            'Manchester Utd': 'Manchester_United',
+            'Manchester United': 'Manchester_United',
+            'Man United': 'Manchester_United',
+            'Man Utd': 'Manchester_United',
+            'Manchester City': 'Manchester_City',
+            'Man City': 'Manchester_City',
+            'Newcastle Utd': 'Newcastle_United',
+            'Newcastle United': 'Newcastle_United',
+            'Tottenham': 'Tottenham',
+            'Spurs': 'Tottenham',
+            'West Ham': 'West_Ham',
+            'West Ham United': 'West_Ham',
+            'Nott\'ham Forest': 'Nottingham_Forest',
+            'Nottingham Forest': 'Nottingham_Forest',
+            'Wolves': 'Wolverhampton_Wanderers',
+            'Wolverhampton': 'Wolverhampton_Wanderers',
+        }
+
+        # Check direct mapping
+        if team_name in team_mapping:
+            return team_mapping[team_name]
+
+        # Default: replace spaces with underscores
+        return team_name.replace(' ', '_')
+
+    def scrape_premier_league_fixtures(self) -> List[Dict]:
+        """
+        Scrape upcoming Premier League fixtures from FBref
+
+        Returns:
+            List of upcoming fixtures with team names
+        """
+        try:
+            # Premier League 2024-25 fixtures page
+            url = "https://fbref.com/en/comps/9/schedule/Premier-League-Scores-and-Fixtures"
+            print(f"\n🔍 Fetching fixtures from FBref...")
+
+            response = self.session.get(url, timeout=15)
+            if response.status_code != 200:
+                print(f"⚠️  Could not fetch fixtures (status {response.status_code})")
+                return []
+
+            soup = BeautifulSoup(response.content, 'html.parser')
+            fixtures = []
+
+            # Find the fixtures table
+            table = soup.find('table', {'id': 'sched_2024-2025_9_1'})
+            if not table:
+                # Try alternative table ID
+                table = soup.find('table', class_='stats_table')
+
+            if not table:
+                print("⚠️  Could not find fixtures table")
+                return []
+
+            rows = table.find_all('tr')
+            current_date = datetime.now()
+
+            for row in rows:
+                # Skip header rows
+                if row.find('th', {'data-stat': 'score'}):
+                    continue
+
+                cells = row.find_all('td')
+                if len(cells) < 7:
+                    continue
+
+                # Extract data
+                try:
+                    date_cell = row.find('th', {'data-stat': 'date'})
+                    if not date_cell:
+                        continue
+
+                    date_str = date_cell.text.strip()
+
+                    home_team = cells[2].text.strip() if len(cells) > 2 else None
+                    score = cells[3].text.strip() if len(cells) > 3 else ''
+                    away_team = cells[4].text.strip() if len(cells) > 4 else None
+
+                    # Only get upcoming matches (no score yet)
+                    if not home_team or not away_team:
+                        continue
+
+                    if score and score != '':
+                        # Match already played
+                        continue
+
+                    fixtures.append({
+                        'date': date_str,
+                        'home_team': home_team,
+                        'away_team': away_team
+                    })
+
+                except Exception as e:
+                    continue
+
+            print(f"✅ Found {len(fixtures)} upcoming fixtures")
+            return fixtures[:10]  # Return max 10 upcoming fixtures
+
+        except Exception as e:
+            print(f"❌ Error scraping fixtures: {e}")
+            return []
 
     def scrape_fbref_fixtures(self, league_url: str) -> List[Dict]:
         """
@@ -578,6 +714,117 @@ class FootballXGScraper:
         print("• Past performance doesn't guarantee future results")
         print("="*80 + "\n")
 
+    def auto_scrape_and_analyze(self, league: str = 'EPL') -> None:
+        """
+        Automatically scrape upcoming fixtures and analyze them
+
+        Args:
+            league: League to analyze (EPL, La_liga, Bundesliga, etc.)
+        """
+        print("\n" + "="*80)
+        print("🤖 AUTOMATIC SCRAPING MODE")
+        print("="*80)
+        print(f"League: {league}")
+        print("This will scrape upcoming fixtures and team xG data automatically")
+        print("="*80 + "\n")
+
+        # Step 1: Get upcoming fixtures
+        if league == 'EPL':
+            fixtures = self.scrape_premier_league_fixtures()
+        else:
+            print(f"⚠️  Auto-scraping for {league} not yet implemented")
+            print("Please use manual entry mode for now")
+            return
+
+        if not fixtures:
+            print("\n❌ No fixtures found. Please try manual entry mode.")
+            return
+
+        print(f"\n📋 Analyzing {len(fixtures)} upcoming matches...\n")
+
+        # Step 2: For each fixture, scrape team data and analyze
+        analyses = []
+        successful = 0
+
+        for i, fixture in enumerate(fixtures, 1):
+            home_team = fixture['home_team']
+            away_team = fixture['away_team']
+
+            print(f"\n[{i}/{len(fixtures)}] {home_team} vs {away_team}")
+            print("-" * 60)
+
+            # Normalize team names for Understat
+            home_normalized = self.normalize_team_name(home_team)
+            away_normalized = self.normalize_team_name(away_team)
+
+            print(f"🏠 Scraping {home_team} data...")
+            home_data = self.scrape_understat_team_data(home_normalized, league)
+
+            if not home_data:
+                print(f"  ⚠️  Could not get data for {home_team}")
+                analyses.append({
+                    'prediction': 'INSUFFICIENT_DATA',
+                    'confidence': 0,
+                    'reasoning': f'Could not scrape data for {home_team}'
+                })
+                continue
+
+            time.sleep(1)  # Be nice to the server
+
+            print(f"🛫 Scraping {away_team} data...")
+            away_data = self.scrape_understat_team_data(away_normalized, league)
+
+            if not away_data:
+                print(f"  ⚠️  Could not get data for {away_team}")
+                analyses.append({
+                    'prediction': 'INSUFFICIENT_DATA',
+                    'confidence': 0,
+                    'reasoning': f'Could not scrape data for {away_team}'
+                })
+                continue
+
+            time.sleep(1)  # Be nice to the server
+
+            # Display scraped stats
+            if 'avg_xg_home' in home_data:
+                print(f"  ✅ {home_team} at home: {home_data['avg_xg_home']} xG, {home_data['avg_xga_home']} xGA")
+            else:
+                print(f"  ✅ {home_team} overall: {home_data['avg_xg']} xG, {home_data['avg_xga']} xGA")
+
+            if 'avg_xg_away' in away_data:
+                print(f"  ✅ {away_team} away: {away_data['avg_xg_away']} xG, {away_data['avg_xga_away']} xGA")
+            else:
+                print(f"  ✅ {away_team} overall: {away_data['avg_xg']} xG, {away_data['avg_xga']} xGA")
+
+            # Analyze the match
+            print(f"  🔮 Analyzing...")
+            analysis = self.analyze_over_under_advanced(home_data, away_data)
+            analyses.append(analysis)
+            successful += 1
+
+            print(f"  📊 Prediction: {analysis['prediction']} ({analysis['confidence']}% confidence)")
+
+        # Step 3: Generate comprehensive report
+        print("\n" + "="*80)
+        print(f"✅ Successfully analyzed {successful}/{len(fixtures)} matches")
+        print("="*80 + "\n")
+
+        if successful > 0:
+            self.generate_report(fixtures, analyses)
+
+            # Ask to export
+            export = input("\nExport results to JSON? (y/n): ").lower()
+            if export == 'y':
+                filename = f"predictions_{league}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+                with open(filename, 'w') as f:
+                    json.dump({
+                        'generated': datetime.now().isoformat(),
+                        'league': league,
+                        'fixtures': fixtures,
+                        'analyses': analyses
+                    }, f, indent=2)
+                print(f"✅ Results exported to {filename}")
+
 
 def main():
     """Main execution function"""
@@ -601,67 +848,18 @@ def main():
 
     scraper = FootballXGScraper()
 
-    # Example: Manual mode for quick analysis
     print("\nChoose mode:")
-    print("1. Manual entry (enter team stats directly)")
-    print("2. Auto-scrape fixtures (requires league URL)")
-    print("3. Demo mode (sample data)")
+    print("1. 🤖 AUTO-SCRAPE (Premier League) - Automatically scrape & analyze upcoming matches")
+    print("2. ✍️  Manual entry - Enter team stats directly")
+    print("3. 📊 Demo mode - See sample predictions")
 
     mode = input("\nEnter choice (1-3): ").strip() or "1"
 
-    if mode == "3":
-        # Demo mode with venue-specific sample data
-        print("\n📊 Demo mode: Using realistic venue-specific data")
-        print("   (Notice the difference between home/away performance)\n")
+    if mode == "1":
+        # AUTO-SCRAPE MODE - Main feature!
+        scraper.auto_scrape_and_analyze(league='EPL')
 
-        fixtures = [
-            {'home_team': 'Manchester City', 'away_team': 'Liverpool', 'date': '2024-11-10'},
-            {'home_team': 'Bournemouth', 'away_team': 'Brighton', 'date': '2024-11-10'},
-        ]
-
-        # Fixture 1: Man City (home) vs Liverpool (away)
-        # Man City at home - dominant attack, strong defense
-        home_data_1 = {
-            'avg_xg_home': 2.5,   # City creates more chances at home
-            'avg_xga_home': 0.7,  # Very strong defense at home
-            'total_matches': 10,
-            'over_25_count': 7
-        }
-
-        # Liverpool away - good attack, but weaker defense away
-        away_data_1 = {
-            'avg_xg_away': 1.8,   # Still good away, but less than at home (2.3)
-            'avg_xga_away': 1.2,  # Concede more away than at home (0.9)
-            'total_matches': 10,
-            'over_25_count': 6
-        }
-
-        # Fixture 2: Bournemouth (home) vs Brighton (away)
-        # Bournemouth at home - decent attack, vulnerable defense
-        home_data_2 = {
-            'avg_xg_home': 1.6,   # Better at home than away (1.2)
-            'avg_xga_home': 1.4,  # Weak defense at home
-            'total_matches': 10,
-            'over_25_count': 6
-        }
-
-        # Brighton away - moderate attack, okay defense
-        away_data_2 = {
-            'avg_xg_away': 1.3,   # Weaker away than at home (1.7)
-            'avg_xga_away': 1.3,  # Similar defense away
-            'total_matches': 10,
-            'over_25_count': 5
-        }
-
-        # Use advanced Poisson-based analysis
-        analyses = [
-            scraper.analyze_over_under_advanced(home_data_1, away_data_1),
-            scraper.analyze_over_under_advanced(home_data_2, away_data_2)
-        ]
-
-        scraper.generate_report(fixtures, analyses)
-
-    elif mode == "1":
+    elif mode == "2":
         # Manual entry mode
         fixtures = scraper.get_manual_fixtures()
 
@@ -735,22 +933,69 @@ def main():
 
         scraper.generate_report(fixtures, analyses)
 
-    else:
-        print("\nNote: Auto-scraping requires specific league URLs and may need adjustments")
-        print("For now, use manual mode or demo mode for testing.")
-        print("You can extend this script to scrape from your preferred data source.")
+        # Export option
+        export = input("\nExport results to JSON? (y/n): ").lower()
+        if export == 'y':
+            filename = f"predictions_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+            with open(filename, 'w') as f:
+                json.dump({
+                    'generated': datetime.now().isoformat(),
+                    'fixtures': fixtures,
+                    'analyses': analyses
+                }, f, indent=2)
+            print(f"✅ Results exported to {filename}")
 
-    # Export option
-    export = input("\nExport results to JSON? (y/n): ").lower()
-    if export == 'y':
-        filename = f"predictions_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
-        with open(filename, 'w') as f:
-            json.dump({
-                'generated': datetime.now().isoformat(),
-                'fixtures': fixtures,
-                'analyses': analyses
-            }, f, indent=2)
-        print(f"✅ Results exported to {filename}")
+    elif mode == "3":
+        # Demo mode with venue-specific sample data
+        print("\n📊 Demo mode: Using realistic venue-specific data")
+        print("   (Notice the difference between home/away performance)\n")
+
+        fixtures = [
+            {'home_team': 'Manchester City', 'away_team': 'Liverpool', 'date': '2024-11-10'},
+            {'home_team': 'Bournemouth', 'away_team': 'Brighton', 'date': '2024-11-10'},
+        ]
+
+        # Fixture 1: Man City (home) vs Liverpool (away)
+        # Man City at home - dominant attack, strong defense
+        home_data_1 = {
+            'avg_xg_home': 2.5,   # City creates more chances at home
+            'avg_xga_home': 0.7,  # Very strong defense at home
+            'total_matches': 10,
+            'over_25_count': 7
+        }
+
+        # Liverpool away - good attack, but weaker defense away
+        away_data_1 = {
+            'avg_xg_away': 1.8,   # Still good away, but less than at home (2.3)
+            'avg_xga_away': 1.2,  # Concede more away than at home (0.9)
+            'total_matches': 10,
+            'over_25_count': 6
+        }
+
+        # Fixture 2: Bournemouth (home) vs Brighton (away)
+        # Bournemouth at home - decent attack, vulnerable defense
+        home_data_2 = {
+            'avg_xg_home': 1.6,   # Better at home than away (1.2)
+            'avg_xga_home': 1.4,  # Weak defense at home
+            'total_matches': 10,
+            'over_25_count': 6
+        }
+
+        # Brighton away - moderate attack, okay defense
+        away_data_2 = {
+            'avg_xg_away': 1.3,   # Weaker away than at home (1.7)
+            'avg_xga_away': 1.3,  # Similar defense away
+            'total_matches': 10,
+            'over_25_count': 5
+        }
+
+        # Use advanced Poisson-based analysis
+        analyses = [
+            scraper.analyze_over_under_advanced(home_data_1, away_data_1),
+            scraper.analyze_over_under_advanced(home_data_2, away_data_2)
+        ]
+
+        scraper.generate_report(fixtures, analyses)
 
 
 if __name__ == "__main__":
