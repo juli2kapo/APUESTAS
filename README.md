@@ -246,15 +246,49 @@ Your selection: [9,10,11]  # Or just press Enter
 
 **No manual input needed! Just select leagues and get predictions.**
 
-**Data Quality:**
-- ✅ **Top 5 European leagues**: Full xG data from Understat (home/away splits)
-- ⚠️ **Other leagues**: League average estimates (1.35 xG/xGA)
+**Data Quality - Intelligent Hybrid Approach:**
 
-**Data Sources:**
-- Fixtures: FBref.com (all 29 leagues)
-- xG Data (Top 5): Understat.com (with home/away splits)
-- xG Data (Others): League averages
-- Analysis: Advanced Poisson probability model
+The scraper uses a **3-tier fallback system** to get the best possible data:
+
+1️⃣ **Try Understat** (Best)
+   - ✅ Top 5 European leagues + Russia
+   - Full xG/xGA with home/away splits
+   - Most accurate predictions
+
+2️⃣ **Try FBref** (Good - NEW!)
+   - ✅ ALL other leagues (Champions League, Copa Libertadores, etc.)
+   - Real team-specific xG/xGA data
+   - Extracted from actual match results
+   - Much better than generic averages!
+
+3️⃣ **League Averages** (Last resort)
+   - ⚠️ Only if both Understat AND FBref fail
+   - Generic 1.35 xG/xGA
+   - Clearly marked in output
+
+**Example:**
+```
+Champions League - Real Madrid vs Bayern Munich:
+  🏠 Trying Understat... ⚠️ Failed (not supported)
+  🏠 Trying FBref... ✅ Success
+  📊 Real Madrid: 2.3 xG, 1.1 xGA (FBref)
+
+  🛫 Trying Understat... ⚠️ Failed
+  🛫 Trying FBref... ✅ Success
+  📊 Bayern Munich: 2.4 xG, 1.2 xGA (FBref)
+
+  🎯 Prediction: OVER 2.5 (72% confidence)
+```
+
+**Before (without hybrid):** Both teams = 1.35 xG (useless!)
+**Now (with hybrid):** Real team data from FBref (accurate!)
+
+**Data Sources (Hybrid Approach):**
+- **Fixtures**: FBref.com (all 29 leagues)
+- **xG Data Tier 1**: Understat.com (Top 5 leagues, home/away splits)
+- **xG Data Tier 2**: FBref.com (team-specific data, all other leagues)
+- **xG Data Tier 3**: League averages (last resort only)
+- **Analysis**: Advanced Poisson probability model
 
 **Key Features:**
 - ⏰ **24-hour filter**: Only matches happening soon
