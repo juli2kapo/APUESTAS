@@ -12,19 +12,63 @@ pip install -r requirements.txt
 python xg_scraper.py
 
 # Choose option 1 (AUTO-SCRAPE)
+# Select leagues (or press Enter for Top 5 European)
 # Sit back and watch it automatically:
-#   ✅ Scrape upcoming Premier League fixtures
+#   ✅ Scrape upcoming fixtures from 29 supported leagues
+#   ⏰ Filter to matches in the NEXT 24 HOURS only
 #   ✅ Get each team's xG/xGA data (with home/away splits)
 #   ✅ Analyze using Poisson probability model
-#   ✅ Generate predictions report
+#   ✅ Generate comprehensive predictions report
 ```
 
 **That's it! No manual input needed.**
 
+## 🏆 Supported Leagues (29 Total)
+
+### 🌍 International Tournaments (5)
+- FIFA World Cup & Qualifying
+- UEFA Euro & Qualifying
+- Copa America
+- Africa Cup of Nations
+- UEFA Nations League
+
+### 🏆 European Club Competitions (3)
+- UEFA Champions League
+- UEFA Europa League
+- UEFA Europa Conference League
+
+### ⭐ Top 5 European Leagues (5) - **FULL XG DATA**
+- 🏴󠁧󠁢󠁥󠁮󠁧󠁿 Premier League (England)
+- 🇪🇸 La Liga (Spain)
+- 🇮🇹 Serie A (Italy)
+- 🇩🇪 Bundesliga (Germany)
+- 🇫🇷 Ligue 1 (France)
+
+### 🏴󠁧󠁢󠁥󠁮󠁧󠁿 English Football (4)
+- EFL Championship
+- EFL League One
+- EFL League Two
+- FA Cup
+
+### 🌎 South American Football (12)
+- Copa Libertadores
+- Copa Sudamericana
+- 🇧🇷 Brasileirao Serie A & B
+- 🇧🇷 Copa do Brasil
+- 🇦🇷 Liga Profesional Argentina
+- 🇦🇷 Copa de la Liga Argentina
+- 🇦🇷 Copa Argentina
+- 🇦🇷 Primera B Nacional
+- 🇨🇱 Primera Division Chile
+- 🇪🇨 Liga Pro Ecuador
+- 🇨🇴 Categoria Primera A Colombia
+- 🇲🇽 Liga MX
+
 ## 🎯 Purpose
 
 This tool **automatically**:
-- Scrapes upcoming football fixtures (Premier League)
+- Scrapes upcoming fixtures from **29 leagues** across the world
+- **⏰ Only analyzes matches in the NEXT 24 HOURS** (no pointless distant predictions)
 - Scrapes xG (expected goals) and xGA (expected goals against) data
 - Uses venue-specific stats (home vs away) for higher accuracy
 - Predicts whether matches will go OVER or UNDER 2.5 goals
@@ -137,43 +181,87 @@ Choose mode: 1
 ```
 **This is the main feature! It does everything automatically:**
 
-✅ Scrapes upcoming Premier League fixtures from FBref
-✅ For each match, scrapes both teams' xG/xGA data from Understat
-✅ **Automatically includes home/away splits for accuracy**
+✅ Scrapes upcoming fixtures from **29 supported leagues**
+✅ **⏰ Only includes matches in the NEXT 24 HOURS**
+✅ For each match, scrapes both teams' xG/xGA data
+✅ **Automatically includes home/away splits for Top 5 leagues**
 ✅ Analyzes all matches using Poisson probability model
 ✅ Generates comprehensive predictions report
 ✅ Optional JSON export for AI analysis
 
 **What happens:**
 ```
-🔍 Fetching fixtures from FBref...
-✅ Found 10 upcoming fixtures
+================================================================================
+SELECT LEAGUES TO ANALYZE
+================================================================================
 
-[1/10] Arsenal vs Chelsea
+🌍 INTERNATIONAL TOURNAMENTS:
+  1. FIFA World Cup
+  2. UEFA Euro
+  ...
+
+⭐ TOP 5 EUROPEAN LEAGUES (Full xG data):
+  9. Premier League (England)
+ 10. La Liga (Spain)
+ 11. Serie A (Italy)
+ 12. Bundesliga (Germany)
+ 13. Ligue 1 (France)
+
+🌎 SOUTH AMERICAN FOOTBALL:
+ 18. Copa Libertadores
+ 20. Brasileirao Serie A
+ ...
+
+💡 TIP: Enter 'all' for all leagues, or numbers separated by commas (e.g., 9,10,11)
+💡 Or press Enter for recommended leagues (Top 5 European)
+
+Your selection: [9,10,11]  # Or just press Enter
+
+🤖 AUTOMATIC MULTI-LEAGUE SCRAPING MODE
+⏰ Filtering: Only matches in the NEXT 24 HOURS
+📋 Analyzing 3 league(s):
+  ✅ Premier League (Understat: full xG data)
+  ✅ La Liga (Understat: full xG data)
+  ✅ Serie A (Understat: full xG data)
+
+📊 PREMIER LEAGUE
+🔍 Fetching fixtures from FBref...
+✅ Found 3 fixtures in next 24 hours
+
+[1/3] Arsenal vs Chelsea
 --------------------------------------------------------------
-🏠 Scraping Arsenal data...
+🏠 Scraping Arsenal data from Understat...
   ✅ Arsenal at home: 2.1 xG, 0.8 xGA
-🛫 Scraping Chelsea data...
+🛫 Scraping Chelsea data from Understat...
   ✅ Chelsea away: 1.6 xG, 1.3 xGA
   🔮 Analyzing...
   📊 Prediction: OVER 2.5 (64.2% confidence)
 
-[2/10] Manchester United vs Liverpool
+📊 LA LIGA
+🔍 Fetching fixtures...
 ...
+
+📊 OVERALL SUMMARY: 12 matches analyzed across 3 league(s)
 ```
 
-**No manual input needed! Just run and get predictions.**
+**No manual input needed! Just select leagues and get predictions.**
 
-**Data Sources Used:**
-- Fixtures: FBref.com (upcoming matches)
-- Team Stats: Understat.com (xG/xGA with home/away splits)
+**Data Quality:**
+- ✅ **Top 5 European leagues**: Full xG data from Understat (home/away splits)
+- ⚠️ **Other leagues**: League average estimates (1.35 xG/xGA)
+
+**Data Sources:**
+- Fixtures: FBref.com (all 29 leagues)
+- xG Data (Top 5): Understat.com (with home/away splits)
+- xG Data (Others): League averages
 - Analysis: Advanced Poisson probability model
 
-**Limitations:**
-- Currently supports Premier League only (easy to extend)
-- Requires internet connection
-- May be rate-limited if run too frequently
-- Some team names may need adjustment in normalize_team_name()
+**Key Features:**
+- ⏰ **24-hour filter**: Only matches happening soon
+- 🌍 **29 leagues**: World Cup to Liga MX
+- 🏠 **Venue-specific stats**: Home/away splits for Top 5
+- 📊 **Batch processing**: Analyze multiple leagues at once
+- 📁 **JSON export**: Perfect for AI analysis
 
 #### 2. **Demo Mode** (Recommended for first run)
 ```
