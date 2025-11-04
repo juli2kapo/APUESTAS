@@ -240,6 +240,49 @@ class FootballXGScraper:
         self.session = requests.Session()
         self.session.headers.update(self.headers)
 
+    def _fetch_with_retry(self, url: str, max_retries: int = 3, timeout: int = 15) -> Optional[requests.Response]:
+        """
+        Fetch URL with exponential backoff retry logic
+
+        Args:
+            url: URL to fetch
+            max_retries: Maximum number of retry attempts (default: 3)
+            timeout: Request timeout in seconds (default: 15)
+
+        Returns:
+            Response object if successful, None otherwise
+        """
+        for attempt in range(max_retries):
+            try:
+                response = self.session.get(url, timeout=timeout)
+
+                # Success
+                if response.status_code == 200:
+                    return response
+
+                # Client error (4xx) - don't retry
+                if 400 <= response.status_code < 500:
+                    return None
+
+                # Server error (5xx) - retry with backoff
+                if attempt < max_retries - 1:
+                    wait_time = 2 ** attempt  # Exponential backoff: 1s, 2s, 4s
+                    time.sleep(wait_time)
+
+            except (requests.ConnectionError, requests.Timeout) as e:
+                # Network error - retry with backoff
+                if attempt < max_retries - 1:
+                    wait_time = 2 ** attempt  # Exponential backoff: 1s, 2s, 4s
+                    time.sleep(wait_time)
+                else:
+                    # Last attempt failed
+                    return None
+            except Exception as e:
+                # Other errors - don't retry
+                return None
+
+        return None
+
     def scrape_understat_team_data(self, team_name: str, league: str = 'EPL') -> Dict:
         """
         Scrape team xG/xGA data from Understat
@@ -253,10 +296,9 @@ class FootballXGScraper:
         """
         try:
             url = f'https://understat.com/team/{team_name}/{datetime.now().year}'
-            response = self.session.get(url, timeout=10)
+            response = self._fetch_with_retry(url, max_retries=3, timeout=10)
 
-            if response.status_code != 200:
-                print(f"Warning: Could not fetch data for {team_name}")
+            if not response:
                 return {}
 
             soup = BeautifulSoup(response.content, 'html.parser')
@@ -274,7 +316,11 @@ class FootballXGScraper:
                         team_data = self._process_understat_data(data)
                         break
 
-            return team_data
+            # Validate data before returning
+            if self._validate_xg_data(team_data, team_name):
+                return team_data
+            else:
+                return {}
 
         except Exception as e:
             print(f"Error scraping Understat for {team_name}: {e}")
@@ -305,8 +351,8 @@ class FootballXGScraper:
 
             league_url = f"https://fbref.com/en/comps/{fbref_id}/{fbref_name}-Stats"
 
-            response = self.session.get(league_url, timeout=15)
-            if response.status_code != 200:
+            response = self._fetch_with_retry(league_url, max_retries=3, timeout=15)
+            if not response:
                 return {}
 
             soup = BeautifulSoup(response.content, 'html.parser')
@@ -332,8 +378,8 @@ class FootballXGScraper:
 
             # Get team page
             team_url = f"https://fbref.com{team_link}"
-            response = self.session.get(team_url, timeout=15)
-            if response.status_code != 200:
+            response = self._fetch_with_retry(team_url, max_retries=3, timeout=15)
+            if not response:
                 return {}
 
             soup = BeautifulSoup(response.content, 'html.parser')
@@ -391,116 +437,56 @@ class FootballXGScraper:
                 return {}
 
             # Process the data using same method as Understat
-            return self._process_understat_data(matches[-10:])  # Last 10 matches
+            processed_data = self._process_understat_data(matches[-10:])  # Last 10 matches
+
+            # Validate data before returning
+            if self._validate_xg_data(processed_data, team_name):
+                return processed_data
+            else:
+                return {}
 
         except Exception as e:
             print(f"  Error scraping FBref for {team_name}: {e}")
             return {}
 
-    def scrape_footystats_team_data(self, team_name: str, league_name: str) -> Dict:
+
+    def _validate_xg_data(self, data: Dict, team_name: str = "Unknown") -> bool:
         """
-        Scrape team xG/xGA data from FootyStats as third fallback
+        Validate that xG data is realistic and complete
 
         Args:
-            team_name: Name of the team
-            league_name: League name from LEAGUES dict
+            data: Dictionary with team xG data
+            team_name: Team name for error reporting
 
         Returns:
-            Dictionary with team xG statistics
+            True if data is valid, False otherwise
         """
-        try:
-            # FootyStats URLs are like: https://footystats.org/england/arsenal-fc
-            # We need to construct the country/league path and team slug
+        if not data:
+            return False
 
-            # Map leagues to FootyStats country paths
-            footystats_leagues = {
-                'Premier League': 'england',
-                'La Liga': 'spain',
-                'Serie A': 'italy',
-                'Bundesliga': 'germany',
-                'Ligue 1': 'france',
-                'UEFA Champions League': 'europe/champions-league',
-                'UEFA Europa League': 'europe/europa-league',
-                'Brasileirao Serie A': 'brazil',
-                'Liga Profesional Argentina': 'argentina',
-                'Liga MX': 'mexico',
-                'Copa Libertadores': 'south-america/copa-libertadores',
-            }
+        # Check required fields exist
+        has_xg = 'avg_xg' in data or 'avg_xg_home' in data or 'avg_xg_away' in data
+        has_xga = 'avg_xga' in data or 'avg_xga_home' in data or 'avg_xga_away' in data
 
-            league_path = footystats_leagues.get(league_name)
-            if not league_path:
-                return {}
+        if not (has_xg and has_xga):
+            print(f"  ⚠️  Validation failed for {team_name}: Missing xG or xGA fields")
+            return False
 
-            # Create team slug (lowercase, replace spaces with hyphens)
-            team_slug = team_name.lower().replace(' ', '-').replace('\'', '').replace('.', '')
-            # Add common suffixes if not present
-            if not any(suffix in team_slug for suffix in ['-fc', '-cf', '-united', '-city']):
-                if league_name == 'Premier League':
-                    team_slug = f"{team_slug}-fc"
+        # Validate xG values are realistic (between 0 and 5 goals per match)
+        for key, value in data.items():
+            if 'avg_xg' in key:  # Covers avg_xg, avg_xg_home, avg_xg_away, avg_xga, etc.
+                try:
+                    val = float(value)
+                    if val < 0 or val > 5.0:
+                        print(f"  ⚠️  Validation failed for {team_name}: {key}={val} is unrealistic (must be 0-5)")
+                        return False
+                    if val == 0:
+                        print(f"  ⚠️  Validation warning for {team_name}: {key}=0 (suspicious but allowed)")
+                except (TypeError, ValueError):
+                    print(f"  ⚠️  Validation failed for {team_name}: {key}={value} is not a number")
+                    return False
 
-            url = f"https://footystats.org/{league_path}/{team_slug}"
-
-            response = self.session.get(url, timeout=15)
-            if response.status_code != 200:
-                # Try without -fc suffix
-                team_slug_alt = team_name.lower().replace(' ', '-').replace('\'', '').replace('.', '')
-                url_alt = f"https://footystats.org/{league_path}/{team_slug_alt}"
-                response = self.session.get(url_alt, timeout=15)
-                if response.status_code != 200:
-                    return {}
-
-            soup = BeautifulSoup(response.content, 'html.parser')
-
-            # Look for xG statistics in the page
-            # FootyStats displays average xG in various stat boxes
-            xg_data = {}
-
-            # Find stat divs with xG data
-            stat_divs = soup.find_all('div', class_='stat')
-            for div in stat_divs:
-                label = div.find('span', class_='label')
-                value = div.find('span', class_='value')
-
-                if label and value:
-                    label_text = label.text.strip().lower()
-                    value_text = value.text.strip()
-
-                    try:
-                        if 'xg for' in label_text or 'expected goals for' in label_text:
-                            xg_data['avg_xg'] = float(value_text)
-                        elif 'xg against' in label_text or 'expected goals against' in label_text:
-                            xg_data['avg_xga'] = float(value_text)
-                    except:
-                        continue
-
-            # Also look in table format
-            if not xg_data:
-                tables = soup.find_all('table')
-                for table in tables:
-                    rows = table.find_all('tr')
-                    for row in rows:
-                        cells = row.find_all(['td', 'th'])
-                        if len(cells) >= 2:
-                            header = cells[0].text.strip().lower()
-                            try:
-                                if 'xg for' in header or 'expected goals for' in header:
-                                    xg_data['avg_xg'] = float(cells[1].text.strip())
-                                elif 'xg against' in header or 'expected goals against' in header:
-                                    xg_data['avg_xga'] = float(cells[1].text.strip())
-                            except:
-                                continue
-
-            if 'avg_xg' in xg_data and 'avg_xga' in xg_data:
-                # Add defaults for other fields
-                xg_data['total_matches'] = 10  # Approximate
-                xg_data['over_25_count'] = 5   # Approximate based on averages
-                return xg_data
-
-            return {}
-
-        except Exception as e:
-            print(f"  Error scraping FootyStats for {team_name}: {e}")
-            return {}
+        return True
 
     def _process_understat_data(self, data: List[Dict]) -> Dict:
         """Process raw Understat data to calculate overall AND home/away specific metrics"""
@@ -699,9 +685,9 @@ class FootballXGScraper:
 
             print(f"\n🔍 Fetching {league_name} fixtures from FBref...")
 
-            response = self.session.get(url, timeout=15)
-            if response.status_code != 200:
-                print(f"⚠️  Could not fetch fixtures (status {response.status_code})")
+            response = self._fetch_with_retry(url, max_retries=3, timeout=15)
+            if not response:
+                print(f"⚠️  Could not fetch fixtures (network error or bad status)")
                 return []
 
             soup = BeautifulSoup(response.content, 'html.parser')
@@ -807,7 +793,10 @@ class FootballXGScraper:
             List of upcoming fixtures
         """
         try:
-            response = self.session.get(league_url, timeout=10)
+            response = self._fetch_with_retry(league_url, max_retries=3, timeout=10)
+            if not response:
+                print("Could not fetch fixtures")
+                return []
             soup = BeautifulSoup(response.content, 'html.parser')
 
             fixtures = []
@@ -980,10 +969,13 @@ class FootballXGScraper:
 
         # Method 2: Multiplicative adjustment (more sophisticated)
         # Adjust team's attack based on opponent's defense relative to league average
-        league_avg_xg = 1.35  # Approximate league average xG per match
-        league_avg_xga = 1.35  # Approximate league average xGA per match
+        # NOTE: These averages are ONLY used for ratio calculations (attack/defense strength),
+        # NOT as fallback data. We skip games if no real team data is available!
+        league_avg_xg = 1.35  # Typical league average xG per match (for ratio calculation only)
+        league_avg_xga = 1.35  # Typical league average xGA per match (for ratio calculation only)
 
-        # Attack strength * Opponent defense weakness ratio
+        # Calculate attack/defense strength ratios relative to average
+        # Example: If team has 2.0 xG and average is 1.35, strength = 2.0/1.35 = 1.48 (48% above average)
         home_attack_strength = home_attack / league_avg_xg if league_avg_xg > 0 else 1.0
         away_defense_ratio = away_defense / league_avg_xga if league_avg_xga > 0 else 1.0
         home_expected_v2 = league_avg_xg * home_attack_strength * away_defense_ratio
@@ -1204,7 +1196,7 @@ class FootballXGScraper:
             elif analysis['prediction'] == 'SKIPPED':
                 print("❌ GAME SKIPPED - No real data available")
                 print(f"💡 Reason: {analysis.get('reasoning', 'Could not fetch real xG data from any source')}")
-                print(f"   Sources tried: Understat → FBref → FootyStats")
+                print(f"   Sources tried: Understat → FBref")
                 print(f"   ℹ️  This game was skipped to avoid using fictitious data")
             else:
                 # Check if this is advanced analysis (with probabilities)
@@ -1290,17 +1282,16 @@ class FootballXGScraper:
         print(f"⏰ Filtering: Only matches in the NEXT 24 HOURS")
         print(f"📋 Analyzing {len(league_names)} league(s):")
         print(f"\n🔍 DATA SOURCE STRATEGY (No Fictitious Data!):")
-        print(f"  1️⃣  Try Understat (Top 5 leagues - best)")
-        print(f"  2️⃣  Try FBref (team-specific xG)")
-        print(f"  3️⃣  Try FootyStats (alternative source)")
-        print(f"  ❌  If all fail → SKIP GAME (no fake data!)")
+        print(f"  1️⃣  Try Understat (Top 5 leagues - best quality)")
+        print(f"  2️⃣  Try FBref (all leagues - team-specific xG)")
+        print(f"  ❌  If both fail → SKIP GAME (no fake data!)")
         print()
         for league in league_names:
             understat_code = self.LEAGUES.get(league, {}).get('understat')
             if understat_code:
                 print(f"  ✅ {league} (Understat priority)")
             else:
-                print(f"  🔍 {league} (FBref/FootyStats)")
+                print(f"  🔍 {league} (FBref)")
         print("="*80 + "\n")
 
         all_fixtures = []
@@ -1339,7 +1330,7 @@ class FootballXGScraper:
                 print(f"\n[{i}/{len(fixtures)}] {home_team} vs {away_team}")
                 print("-" * 60)
 
-                # HYBRID APPROACH: Try Understat → FBref → FootyStats → SKIP (NO FICTITIOUS DATA)
+                # 3-TIER APPROACH: Try Understat → FBref → SKIP (NO FICTITIOUS DATA)
                 home_data = None
                 away_data = None
                 home_data_source = None
@@ -1389,28 +1380,7 @@ class FootballXGScraper:
                         print(f"❌")
                     time.sleep(1)
 
-                # Step 3: Try FootyStats (if FBref also failed)
-                if not home_data:
-                    print(f"🏠 Trying FootyStats for {home_team}...", end=' ')
-                    home_data = self.scrape_footystats_team_data(home_team, league_name)
-                    if home_data:
-                        print(f"✅")
-                        home_data_source = 'FootyStats'
-                    else:
-                        print(f"❌")
-                    time.sleep(1)
-
-                if not away_data:
-                    print(f"🛫 Trying FootyStats for {away_team}...", end=' ')
-                    away_data = self.scrape_footystats_team_data(away_team, league_name)
-                    if away_data:
-                        print(f"✅")
-                        away_data_source = 'FootyStats'
-                    else:
-                        print(f"❌")
-                    time.sleep(1)
-
-                # Step 4: If ALL sources failed, SKIP this game (no fictitious data!)
+                # Step 3: If BOTH sources failed, SKIP this game (no fictitious data!)
                 if not home_data or not away_data:
                     print(f"  ❌ SKIPPING GAME - No real data available for both teams")
                     if not home_data:
@@ -1422,7 +1392,7 @@ class FootballXGScraper:
                     analyses.append({
                         'prediction': 'SKIPPED',
                         'confidence': 0,
-                        'reasoning': f'No real xG data available (tried Understat, FBref, FootyStats)'
+                        'reasoning': f'No real xG data available (tried Understat, FBref)'
                     })
                     continue
 

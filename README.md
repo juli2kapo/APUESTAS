@@ -248,28 +248,30 @@ Your selection: [9,10,11]  # Or just press Enter
 
 **Data Quality - NO Fictitious Data! 🎯**
 
-The scraper uses a **4-tier fallback system** to ensure only REAL team data is used:
+The scraper uses a **3-tier approach** to ensure only REAL team data is used:
 
-1️⃣ **Try Understat** (Best)
-   - ✅ Top 5 European leagues + Russia
+1️⃣ **Try Understat** (Best Quality)
+   - ✅ Top 5 European leagues (EPL, La Liga, Serie A, Bundesliga, Ligue 1)
    - Full xG/xGA with home/away splits
    - Most accurate predictions
+   - Best source for detailed statistics
 
-2️⃣ **Try FBref** (Good)
-   - ✅ ALL leagues (Champions League, Copa Libertadores, etc.)
+2️⃣ **Try FBref** (Good Quality - All Leagues)
+   - ✅ Works for ALL 33 supported leagues
    - Real team-specific xG/xGA data
    - Extracted from actual match results
+   - Reliable fallback for non-Top 5 leagues
 
-3️⃣ **Try FootyStats** (Alternative)
-   - ✅ Additional source for common leagues
-   - Real team xG data
-   - Alternative perspective
-
-4️⃣ **SKIP GAME** (No fake data!)
-   - ❌ If ALL sources fail → Game is SKIPPED
+3️⃣ **SKIP GAME** (Quality Control)
+   - ❌ If BOTH sources fail → Game is SKIPPED
    - **No fictitious data** - we don't use league averages!
-   - Better to skip a game than use fake 1.35 xG for all teams
+   - Better to skip a game than use fake data
    - Clearly marked in output as "SKIPPED"
+
+**Why Only 2 Sources?**
+- FootyStats and similar sites use anti-bot protection (403 errors)
+- Understat + FBref covers 99% of professional football
+- Quality > Quantity: Skip uncertain data rather than guess
 
 **Example Success:**
 ```
@@ -287,10 +289,9 @@ Champions League - Real Madrid vs Bayern Munich:
 
 **Example Skip (No Data Available):**
 ```
-Obscure League - Team A vs Team B:
-  🏠 Trying Understat... ❌
-  🏠 Trying FBref... ❌
-  🏠 Trying FootyStats... ❌
+Obscure League - Unknown Team A vs Unknown Team B:
+  🏠 Trying Understat... ❌ (not supported)
+  🏠 Trying FBref... ❌ (team not found)
   ❌ SKIPPING GAME - No real data available
 ```
 
@@ -299,14 +300,16 @@ Obscure League - Team A vs Team B:
 - ✅ **Transparency** - you know exactly where data comes from
 - ✅ **Quality over quantity** - skip games rather than use fake data
 - ✅ **Trust the analysis** - every prediction uses actual team stats
+- ✅ **Data validation** - xG values checked for realism (0-5 range)
+- ✅ **Network resilience** - automatic retry with exponential backoff
 
-**Data Sources (4-Tier Approach):**
-- **Fixtures**: FBref.com (all 29 leagues)
+**Data Sources (3-Tier Approach):**
+- **Fixtures**: FBref.com (all 33 leagues)
 - **xG Data Tier 1**: Understat.com (Top 5 leagues, home/away splits)
 - **xG Data Tier 2**: FBref.com (team-specific data, all leagues)
-- **xG Data Tier 3**: FootyStats.org (alternative source)
-- **xG Data Tier 4**: SKIP (no fictitious data!)
+- **xG Data Tier 3**: SKIP (no fictitious data!)
 - **Analysis**: Advanced Poisson probability model
+- **Reliability**: 3 retry attempts with exponential backoff for network errors
 
 **Key Features:**
 - ⏰ **24-hour filter**: Only matches happening soon
