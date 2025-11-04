@@ -280,6 +280,123 @@ class FootballXGScraper:
             print(f"Error scraping Understat for {team_name}: {e}")
             return {}
 
+    def scrape_fbref_team_data(self, team_name: str, league_name: str) -> Dict:
+        """
+        Scrape team xG/xGA data from FBref as fallback
+
+        Args:
+            team_name: Name of the team
+            league_name: League name from LEAGUES dict
+
+        Returns:
+            Dictionary with team xG statistics including home/away splits
+        """
+        try:
+            league_info = self.LEAGUES.get(league_name)
+            if not league_info:
+                return {}
+
+            fbref_id = league_info['fbref_id']
+            fbref_name = league_info['fbref_name']
+
+            # Search for team on FBref - construct likely URL
+            # FBref team URLs are like: /en/squads/{team_id}/{team_name}-Stats
+            # We'll search via the league's team list page instead
+
+            league_url = f"https://fbref.com/en/comps/{fbref_id}/{fbref_name}-Stats"
+
+            response = self.session.get(league_url, timeout=15)
+            if response.status_code != 200:
+                return {}
+
+            soup = BeautifulSoup(response.content, 'html.parser')
+
+            # Find the team's link in the standings/team list
+            team_link = None
+            for link in soup.find_all('a'):
+                if link.text.strip().lower() == team_name.lower():
+                    href = link.get('href', '')
+                    if '/squads/' in href:
+                        team_link = href
+                        break
+
+            if not team_link:
+                # Try partial match
+                for link in soup.find_all('a'):
+                    if team_name.lower() in link.text.strip().lower() and '/squads/' in link.get('href', ''):
+                        team_link = link.get('href')
+                        break
+
+            if not team_link:
+                return {}
+
+            # Get team page
+            team_url = f"https://fbref.com{team_link}"
+            response = self.session.get(team_url, timeout=15)
+            if response.status_code != 200:
+                return {}
+
+            soup = BeautifulSoup(response.content, 'html.parser')
+
+            # Look for "Scores & Fixtures" table which has xG data
+            fixtures_table = None
+            for table in soup.find_all('table'):
+                if 'scores' in table.get('id', '').lower() or 'fixtures' in table.get('id', '').lower():
+                    fixtures_table = table
+                    break
+
+            if not fixtures_table:
+                return {}
+
+            # Extract xG data from recent matches
+            matches = []
+            rows = fixtures_table.find_all('tr')
+
+            for row in rows:
+                cells = row.find_all('td')
+                if len(cells) < 10:
+                    continue
+
+                try:
+                    # Extract match data
+                    match_data = {}
+
+                    for cell in cells:
+                        stat_type = cell.get('data-stat', '')
+
+                        if stat_type == 'venue':
+                            venue = cell.text.strip()
+                            match_data['h_a'] = 'h' if venue == 'Home' else 'a'
+                        elif stat_type == 'xg_for':
+                            xg_text = cell.text.strip()
+                            match_data['xG'] = float(xg_text) if xg_text and xg_text != '' else 0
+                        elif stat_type == 'xg_against':
+                            xga_text = cell.text.strip()
+                            match_data['xGA'] = float(xga_text) if xga_text and xga_text != '' else 0
+                        elif stat_type == 'goals_for':
+                            goals_text = cell.text.strip()
+                            match_data['scored'] = int(goals_text) if goals_text and goals_text != '' else 0
+                        elif stat_type == 'goals_against':
+                            goals_against_text = cell.text.strip()
+                            match_data['missed'] = int(goals_against_text) if goals_against_text and goals_against_text != '' else 0
+
+                    # Only add if we have xG data
+                    if 'xG' in match_data and 'xGA' in match_data:
+                        matches.append(match_data)
+
+                except Exception as e:
+                    continue
+
+            if not matches:
+                return {}
+
+            # Process the data using same method as Understat
+            return self._process_understat_data(matches[-10:])  # Last 10 matches
+
+        except Exception as e:
+            print(f"  Error scraping FBref for {team_name}: {e}")
+            return {}
+
     def _process_understat_data(self, data: List[Dict]) -> Dict:
         """Process raw Understat data to calculate overall AND home/away specific metrics"""
         if not data:
@@ -332,10 +449,11 @@ class FootballXGScraper:
 
     def normalize_team_name(self, team_name: str) -> str:
         """
-        Normalize team names for Understat compatibility
+        Normalize team names for Understat compatibility across Top 5 leagues
         """
-        # Team name mappings for Understat
+        # Comprehensive team name mappings for Understat (Top 5 European leagues)
         team_mapping = {
+            # PREMIER LEAGUE (England)
             'Brighton & Hove Albion': 'Brighton',
             'Brighton and Hove Albion': 'Brighton',
             'Manchester Utd': 'Manchester_United',
@@ -354,14 +472,71 @@ class FootballXGScraper:
             'Nottingham Forest': 'Nottingham_Forest',
             'Wolves': 'Wolverhampton_Wanderers',
             'Wolverhampton': 'Wolverhampton_Wanderers',
+            'Leicester City': 'Leicester',
+
+            # LA LIGA (Spain)
+            'Athletic Club': 'Athletic_Bilbao',
+            'Ath Bilbao': 'Athletic_Bilbao',
+            'Atlético Madrid': 'Atletico_Madrid',
+            'Atletico Madrid': 'Atletico_Madrid',
+            'Atleti': 'Atletico_Madrid',
+            'Celta Vigo': 'Celta',
+            'Deportivo Alavés': 'Alaves',
+            'Deportivo Alaves': 'Alaves',
+            'Rayo': 'Rayo_Vallecano',
+            'Real Betis': 'Betis',
+            'Real Sociedad': 'Real_Sociedad',
+            'UD Las Palmas': 'Las_Palmas',
+
+            # SERIE A (Italy)
+            'AC Milan': 'Milan',
+            'Inter Milan': 'Inter',
+            'Inter': 'Inter',
+            'Internazionale': 'Inter',
+            'AS Roma': 'Roma',
+            'Hellas Verona': 'Verona',
+            'Verona': 'Verona',
+
+            # BUNDESLIGA (Germany)
+            'FC Köln': 'Koln',
+            'FC Koln': 'Koln',
+            '1. FC Köln': 'Koln',
+            'Eintracht Frankfurt': 'Eintracht_Frankfurt',
+            'RB Leipzig': 'RasenBallsport_Leipzig',
+            'Bayern Munich': 'Bayern_Munich',
+            'Bayern München': 'Bayern_Munich',
+            'Bayer Leverkusen': 'Bayer_Leverkusen',
+            'Bayer 04 Leverkusen': 'Bayer_Leverkusen',
+            'Borussia Dortmund': 'Borussia_Dortmund',
+            'Dortmund': 'Borussia_Dortmund',
+            'BVB': 'Borussia_Dortmund',
+            'Borussia M\'gladbach': 'Borussia_Monchengladbach',
+            'Borussia Mönchengladbach': 'Borussia_Monchengladbach',
+            'M\'gladbach': 'Borussia_Monchengladbach',
+            'VfL Wolfsburg': 'Wolfsburg',
+            'VfB Stuttgart': 'Stuttgart',
+
+            # LIGUE 1 (France)
+            'Paris S-G': 'Paris_Saint_Germain',
+            'Paris Saint Germain': 'Paris_Saint_Germain',
+            'Paris Saint-Germain': 'Paris_Saint_Germain',
+            'PSG': 'Paris_Saint_Germain',
+            'Olympique Marseille': 'Marseille',
+            'Olympique Lyonnais': 'Lyon',
+            'AS Monaco': 'Monaco',
+            'AS Saint-Étienne': 'Saint-Etienne',
+            'AS Saint-Etienne': 'Saint-Etienne',
         }
 
         # Check direct mapping
         if team_name in team_mapping:
             return team_mapping[team_name]
 
-        # Default: replace spaces with underscores
-        return team_name.replace(' ', '_')
+        # Default: replace spaces with underscores and remove special characters
+        normalized = team_name.replace(' ', '_')
+        # Remove common special characters that cause issues
+        normalized = normalized.replace('\'', '').replace('.', '').replace('-', '_')
+        return normalized
 
     def _is_within_24_hours(self, date_str: str) -> bool:
         """
@@ -1001,12 +1176,17 @@ class FootballXGScraper:
         print("="*80)
         print(f"⏰ Filtering: Only matches in the NEXT 24 HOURS")
         print(f"📋 Analyzing {len(league_names)} league(s):")
+        print(f"\n🔍 DATA SOURCE STRATEGY (Hybrid Approach):")
+        print(f"  1️⃣  Try Understat (Top 5 leagues + Russia)")
+        print(f"  2️⃣  Try FBref (team-specific xG data)")
+        print(f"  3️⃣  League averages (last resort only)")
+        print()
         for league in league_names:
             understat_code = self.LEAGUES.get(league, {}).get('understat')
             if understat_code:
-                print(f"  ✅ {league} (Understat: full xG data)")
+                print(f"  ✅ {league} (Understat priority)")
             else:
-                print(f"  ⚠️  {league} (FBref only: league average estimates)")
+                print(f"  🔍 {league} (FBref fallback)")
         print("="*80 + "\n")
 
         all_fixtures = []
@@ -1045,52 +1225,87 @@ class FootballXGScraper:
                 print(f"\n[{i}/{len(fixtures)}] {home_team} vs {away_team}")
                 print("-" * 60)
 
-                # Try Understat if available for this league
+                # HYBRID APPROACH: Try Understat → FBref → League Averages (last resort)
                 home_data = None
                 away_data = None
+                home_data_source = None
+                away_data_source = None
 
+                # Step 1: Try Understat (if league supported)
                 if understat_code:
-                    # Normalize team names for Understat
                     home_normalized = self.normalize_team_name(home_team)
                     away_normalized = self.normalize_team_name(away_team)
 
-                    print(f"🏠 Scraping {home_team} data from Understat...")
+                    print(f"🏠 Trying Understat for {home_team}...", end=' ')
                     home_data = self.scrape_understat_team_data(home_normalized, understat_code)
+                    if home_data:
+                        print(f"✅ Success")
+                        home_data_source = 'Understat'
+                    else:
+                        print(f"⚠️  Failed")
                     time.sleep(1)
 
-                    print(f"🛫 Scraping {away_team} data from Understat...")
+                    print(f"🛫 Trying Understat for {away_team}...", end=' ')
                     away_data = self.scrape_understat_team_data(away_normalized, understat_code)
+                    if away_data:
+                        print(f"✅ Success")
+                        away_data_source = 'Understat'
+                    else:
+                        print(f"⚠️  Failed")
                     time.sleep(1)
 
-                # If Understat failed or not available, use estimated data
-                if not home_data or not away_data:
-                    print(f"  ⚠️  Using league average estimates (no Understat data)")
-                    # Use league average data as fallback
-                    if not home_data:
-                        home_data = {
-                            'avg_xg': 1.35,
-                            'avg_xga': 1.35,
-                            'total_matches': 10,
-                            'over_25_count': 5
-                        }
-                    if not away_data:
-                        away_data = {
-                            'avg_xg': 1.35,
-                            'avg_xga': 1.35,
-                            'total_matches': 10,
-                            'over_25_count': 5
-                        }
+                # Step 2: Try FBref (if Understat failed)
+                if not home_data:
+                    print(f"🏠 Trying FBref for {home_team}...", end=' ')
+                    home_data = self.scrape_fbref_team_data(home_team, league_name)
+                    if home_data:
+                        print(f"✅ Success")
+                        home_data_source = 'FBref'
+                    else:
+                        print(f"⚠️  Failed")
+                    time.sleep(1)
 
-                # Display scraped stats
+                if not away_data:
+                    print(f"🛫 Trying FBref for {away_team}...", end=' ')
+                    away_data = self.scrape_fbref_team_data(away_team, league_name)
+                    if away_data:
+                        print(f"✅ Success")
+                        away_data_source = 'FBref'
+                    else:
+                        print(f"⚠️  Failed")
+                    time.sleep(1)
+
+                # Step 3: Last resort - league averages (only if everything failed)
+                if not home_data:
+                    print(f"  ⚠️  Using league average for {home_team} (no data available)")
+                    home_data = {
+                        'avg_xg': 1.35,
+                        'avg_xga': 1.35,
+                        'total_matches': 10,
+                        'over_25_count': 5
+                    }
+                    home_data_source = 'League Average'
+
+                if not away_data:
+                    print(f"  ⚠️  Using league average for {away_team} (no data available)")
+                    away_data = {
+                        'avg_xg': 1.35,
+                        'avg_xga': 1.35,
+                        'total_matches': 10,
+                        'over_25_count': 5
+                    }
+                    away_data_source = 'League Average'
+
+                # Display scraped stats with data source
                 if 'avg_xg_home' in home_data:
-                    print(f"  ✅ {home_team} at home: {home_data['avg_xg_home']} xG, {home_data['avg_xga_home']} xGA")
+                    print(f"  📊 {home_team} at home: {home_data['avg_xg_home']} xG, {home_data['avg_xga_home']} xGA ({home_data_source})")
                 else:
-                    print(f"  ✅ {home_team} overall: {home_data['avg_xg']} xG, {home_data['avg_xga']} xGA")
+                    print(f"  📊 {home_team} overall: {home_data['avg_xg']} xG, {home_data['avg_xga']} xGA ({home_data_source})")
 
                 if 'avg_xg_away' in away_data:
-                    print(f"  ✅ {away_team} away: {away_data['avg_xg_away']} xG, {away_data['avg_xga_away']} xGA")
+                    print(f"  📊 {away_team} away: {away_data['avg_xg_away']} xG, {away_data['avg_xga_away']} xGA ({away_data_source})")
                 else:
-                    print(f"  ✅ {away_team} overall: {away_data['avg_xg']} xG, {away_data['avg_xga']} xGA")
+                    print(f"  📊 {away_team} overall: {away_data['avg_xg']} xG, {away_data['avg_xga']} xGA ({away_data_source})")
 
                 # Analyze the match
                 print(f"  🔮 Analyzing...")
