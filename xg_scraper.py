@@ -33,6 +33,206 @@ import re
 class FootballXGScraper:
     """Scrapes and analyzes xG data from multiple sources"""
 
+    # Comprehensive league database
+    LEAGUES = {
+        # International Tournaments
+        'FIFA World Cup': {
+            'fbref_id': '1',
+            'fbref_name': 'World-Cup',
+            'understat': None,
+            'season': '2026'
+        },
+        'FIFA World Cup Qualifying': {
+            'fbref_id': 'comps/qualifier',
+            'fbref_name': 'World-Cup-Qualifying',
+            'understat': None,
+        },
+        'UEFA Euro': {
+            'fbref_id': '676',
+            'fbref_name': 'European-Championship',
+            'understat': None,
+        },
+        'UEFA Euro Qualifying': {
+            'fbref_id': 'comps/qualifier',
+            'fbref_name': 'European-Championship-Qualifying',
+            'understat': None,
+        },
+        'Africa Cup of Nations': {
+            'fbref_id': '72',
+            'fbref_name': 'Africa-Cup-of-Nations',
+            'understat': None,
+        },
+        'Copa America': {
+            'fbref_id': '685',
+            'fbref_name': 'Copa-America',
+            'understat': None,
+        },
+        'UEFA Nations League': {
+            'fbref_id': '999',
+            'fbref_name': 'UEFA-Nations-League',
+            'understat': None,
+        },
+
+        # European Club Competitions
+        'UEFA Champions League': {
+            'fbref_id': '8',
+            'fbref_name': 'Champions-League',
+            'understat': None,
+        },
+        'UEFA Europa League': {
+            'fbref_id': '19',
+            'fbref_name': 'Europa-League',
+            'understat': None,
+        },
+        'UEFA Europa Conference League': {
+            'fbref_id': '882',
+            'fbref_name': 'Europa-Conference-League',
+            'understat': None,
+        },
+
+        # Top 5 European Leagues (Understat supported)
+        'Premier League': {
+            'fbref_id': '9',
+            'fbref_name': 'Premier-League',
+            'understat': 'EPL',
+            'country': 'England'
+        },
+        'La Liga': {
+            'fbref_id': '12',
+            'fbref_name': 'La-Liga',
+            'understat': 'La_liga',
+            'country': 'Spain'
+        },
+        'Bundesliga': {
+            'fbref_id': '20',
+            'fbref_name': 'Bundesliga',
+            'understat': 'Bundesliga',
+            'country': 'Germany'
+        },
+        'Serie A': {
+            'fbref_id': '11',
+            'fbref_name': 'Serie-A',
+            'understat': 'Serie_A',
+            'country': 'Italy'
+        },
+        'Ligue 1': {
+            'fbref_id': '13',
+            'fbref_name': 'Ligue-1',
+            'understat': 'Ligue_1',
+            'country': 'France'
+        },
+
+        # English Football
+        'EFL Championship': {
+            'fbref_id': '10',
+            'fbref_name': 'Championship',
+            'understat': None,
+            'country': 'England'
+        },
+        'EFL League One': {
+            'fbref_id': '15',
+            'fbref_name': 'League-One',
+            'understat': None,
+            'country': 'England'
+        },
+        'EFL League Two': {
+            'fbref_id': '16',
+            'fbref_name': 'League-Two',
+            'understat': None,
+            'country': 'England'
+        },
+        'FA Cup': {
+            'fbref_id': '23',
+            'fbref_name': 'FA-Cup',
+            'understat': None,
+            'country': 'England'
+        },
+
+        # South American Competitions
+        'Copa Libertadores': {
+            'fbref_id': '14',
+            'fbref_name': 'Copa-Libertadores',
+            'understat': None,
+        },
+        'Copa Sudamericana': {
+            'fbref_id': '718',
+            'fbref_name': 'Copa-Sudamericana',
+            'understat': None,
+        },
+        'Brasileirao Serie A': {
+            'fbref_id': '24',
+            'fbref_name': 'Serie-A',
+            'understat': None,
+            'country': 'Brazil'
+        },
+        'Brasileirao Serie B': {
+            'fbref_id': '38',
+            'fbref_name': 'Serie-B',
+            'understat': None,
+            'country': 'Brazil'
+        },
+        'Copa do Brasil': {
+            'fbref_id': '609',
+            'fbref_name': 'Copa-do-Brasil',
+            'understat': None,
+            'country': 'Brazil'
+        },
+        'Liga Profesional Argentina': {
+            'fbref_id': '21',
+            'fbref_name': 'Primera-Division',
+            'understat': None,
+            'country': 'Argentina'
+        },
+        'Copa de la Liga Argentina': {
+            'fbref_id': '1050',
+            'fbref_name': 'Copa-de-la-Liga-Profesional',
+            'understat': None,
+            'country': 'Argentina'
+        },
+        'Copa Argentina': {
+            'fbref_id': '644',
+            'fbref_name': 'Copa-Argentina',
+            'understat': None,
+            'country': 'Argentina'
+        },
+        'Primera B Nacional Argentina': {
+            'fbref_id': '443',
+            'fbref_name': 'Primera-B-Nacional',
+            'understat': None,
+            'country': 'Argentina'
+        },
+        'Primera Division Chile': {
+            'fbref_id': '37',
+            'fbref_name': 'Primera-Division',
+            'understat': None,
+            'country': 'Chile'
+        },
+        'Liga Pro Ecuador': {
+            'fbref_id': '45',
+            'fbref_name': 'Serie-A',
+            'understat': None,
+            'country': 'Ecuador'
+        },
+        'Copa Ecuador': {
+            'fbref_id': '1026',
+            'fbref_name': 'Copa-Ecuador',
+            'understat': None,
+            'country': 'Ecuador'
+        },
+        'Categoria Primera A Colombia': {
+            'fbref_id': '35',
+            'fbref_name': 'Primera-A',
+            'understat': None,
+            'country': 'Colombia'
+        },
+        'Liga MX': {
+            'fbref_id': '31',
+            'fbref_name': 'Liga-MX',
+            'understat': None,
+            'country': 'Mexico'
+        },
+    }
+
     def __init__(self):
         self.headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
@@ -163,17 +363,61 @@ class FootballXGScraper:
         # Default: replace spaces with underscores
         return team_name.replace(' ', '_')
 
-    def scrape_premier_league_fixtures(self) -> List[Dict]:
+    def _is_within_24_hours(self, date_str: str) -> bool:
         """
-        Scrape upcoming Premier League fixtures from FBref
+        Check if a date string is within the next 24 hours
+
+        Args:
+            date_str: Date string from FBref (e.g., "2025-11-05", "2025-11-05 15:00")
+
+        Returns:
+            True if match is within next 24 hours
+        """
+        try:
+            now = datetime.now()
+            next_24h = now + timedelta(hours=24)
+
+            # Try parsing with time
+            try:
+                match_date = datetime.strptime(date_str, "%Y-%m-%d %H:%M")
+            except:
+                # Try parsing without time (assume noon)
+                try:
+                    match_date = datetime.strptime(date_str, "%Y-%m-%d")
+                    match_date = match_date.replace(hour=12)  # Assume noon
+                except:
+                    return False
+
+            # Check if match is in the future and within 24 hours
+            return now <= match_date <= next_24h
+
+        except Exception as e:
+            return False
+
+    def scrape_league_fixtures(self, league_name: str, hours_ahead: int = 24) -> List[Dict]:
+        """
+        Scrape upcoming fixtures for any league from FBref (within specified hours)
+
+        Args:
+            league_name: Name of league from LEAGUES dict
+            hours_ahead: Only get matches within this many hours (default: 24)
 
         Returns:
             List of upcoming fixtures with team names
         """
         try:
-            # Premier League 2024-25 fixtures page
-            url = "https://fbref.com/en/comps/9/schedule/Premier-League-Scores-and-Fixtures"
-            print(f"\n🔍 Fetching fixtures from FBref...")
+            league_info = self.LEAGUES.get(league_name)
+            if not league_info:
+                print(f"❌ League '{league_name}' not found in database")
+                return []
+
+            fbref_id = league_info['fbref_id']
+            fbref_name = league_info['fbref_name']
+
+            # Construct FBref URL
+            url = f"https://fbref.com/en/comps/{fbref_id}/schedule/{fbref_name}-Scores-and-Fixtures"
+
+            print(f"\n🔍 Fetching {league_name} fixtures from FBref...")
 
             response = self.session.get(url, timeout=15)
             if response.status_code != 200:
@@ -182,27 +426,32 @@ class FootballXGScraper:
 
             soup = BeautifulSoup(response.content, 'html.parser')
             fixtures = []
+            now = datetime.now()
+            cutoff_time = now + timedelta(hours=hours_ahead)
 
-            # Find the fixtures table
-            table = soup.find('table', {'id': 'sched_2024-2025_9_1'})
+            # Find the fixtures table - try multiple strategies
+            table = soup.find('table', class_='stats_table')
             if not table:
-                # Try alternative table ID
-                table = soup.find('table', class_='stats_table')
+                # Try by ID pattern
+                tables = soup.find_all('table')
+                for t in tables:
+                    if 'sched' in t.get('id', ''):
+                        table = t
+                        break
 
             if not table:
                 print("⚠️  Could not find fixtures table")
                 return []
 
             rows = table.find_all('tr')
-            current_date = datetime.now()
 
             for row in rows:
                 # Skip header rows
-                if row.find('th', {'data-stat': 'score'}):
+                if row.find('th', {'scope': 'col'}):
                     continue
 
                 cells = row.find_all('td')
-                if len(cells) < 7:
+                if len(cells) < 5:
                     continue
 
                 # Extract data
@@ -213,9 +462,26 @@ class FootballXGScraper:
 
                     date_str = date_cell.text.strip()
 
-                    home_team = cells[2].text.strip() if len(cells) > 2 else None
-                    score = cells[3].text.strip() if len(cells) > 3 else ''
-                    away_team = cells[4].text.strip() if len(cells) > 4 else None
+                    # Get time if available
+                    time_cell = row.find('td', {'data-stat': 'time'})
+                    time_str = time_cell.text.strip() if time_cell else ""
+
+                    # Combine date and time
+                    full_date_str = f"{date_str} {time_str}".strip() if time_str else date_str
+
+                    # Find home team, score, away team (positions vary by league)
+                    home_team = None
+                    away_team = None
+                    score = ''
+
+                    for cell in cells:
+                        stat_type = cell.get('data-stat', '')
+                        if stat_type == 'home_team':
+                            home_team = cell.text.strip()
+                        elif stat_type == 'away_team':
+                            away_team = cell.text.strip()
+                        elif stat_type == 'score':
+                            score = cell.text.strip()
 
                     # Only get upcoming matches (no score yet)
                     if not home_team or not away_team:
@@ -225,17 +491,26 @@ class FootballXGScraper:
                         # Match already played
                         continue
 
+                    # Check if match is within the time window
+                    if not self._is_within_24_hours(full_date_str):
+                        continue
+
                     fixtures.append({
-                        'date': date_str,
+                        'date': full_date_str,
                         'home_team': home_team,
-                        'away_team': away_team
+                        'away_team': away_team,
+                        'league': league_name
                     })
 
                 except Exception as e:
                     continue
 
-            print(f"✅ Found {len(fixtures)} upcoming fixtures")
-            return fixtures[:10]  # Return max 10 upcoming fixtures
+            if fixtures:
+                print(f"✅ Found {len(fixtures)} fixtures in next {hours_ahead} hours")
+            else:
+                print(f"⚠️  No fixtures found in next {hours_ahead} hours")
+
+            return fixtures
 
         except Exception as e:
             print(f"❌ Error scraping fixtures: {e}")
@@ -714,116 +989,150 @@ class FootballXGScraper:
         print("• Past performance doesn't guarantee future results")
         print("="*80 + "\n")
 
-    def auto_scrape_and_analyze(self, league: str = 'EPL') -> None:
+    def auto_scrape_and_analyze(self, league_names: List[str]) -> None:
         """
-        Automatically scrape upcoming fixtures and analyze them
+        Automatically scrape upcoming fixtures and analyze them for multiple leagues
 
         Args:
-            league: League to analyze (EPL, La_liga, Bundesliga, etc.)
+            league_names: List of league names to analyze
         """
         print("\n" + "="*80)
-        print("🤖 AUTOMATIC SCRAPING MODE")
+        print("🤖 AUTOMATIC MULTI-LEAGUE SCRAPING MODE")
         print("="*80)
-        print(f"League: {league}")
-        print("This will scrape upcoming fixtures and team xG data automatically")
+        print(f"⏰ Filtering: Only matches in the NEXT 24 HOURS")
+        print(f"📋 Analyzing {len(league_names)} league(s):")
+        for league in league_names:
+            understat_code = self.LEAGUES.get(league, {}).get('understat')
+            if understat_code:
+                print(f"  ✅ {league} (Understat: full xG data)")
+            else:
+                print(f"  ⚠️  {league} (FBref only: league average estimates)")
         print("="*80 + "\n")
 
-        # Step 1: Get upcoming fixtures
-        if league == 'EPL':
-            fixtures = self.scrape_premier_league_fixtures()
-        else:
-            print(f"⚠️  Auto-scraping for {league} not yet implemented")
-            print("Please use manual entry mode for now")
-            return
+        all_fixtures = []
+        all_analyses = []
+        total_successful = 0
 
-        if not fixtures:
-            print("\n❌ No fixtures found. Please try manual entry mode.")
-            return
+        for league_name in league_names:
+            print("\n" + "="*80)
+            print(f"📊 {league_name.upper()}")
+            print("="*80)
 
-        print(f"\n📋 Analyzing {len(fixtures)} upcoming matches...\n")
-
-        # Step 2: For each fixture, scrape team data and analyze
-        analyses = []
-        successful = 0
-
-        for i, fixture in enumerate(fixtures, 1):
-            home_team = fixture['home_team']
-            away_team = fixture['away_team']
-
-            print(f"\n[{i}/{len(fixtures)}] {home_team} vs {away_team}")
-            print("-" * 60)
-
-            # Normalize team names for Understat
-            home_normalized = self.normalize_team_name(home_team)
-            away_normalized = self.normalize_team_name(away_team)
-
-            print(f"🏠 Scraping {home_team} data...")
-            home_data = self.scrape_understat_team_data(home_normalized, league)
-
-            if not home_data:
-                print(f"  ⚠️  Could not get data for {home_team}")
-                analyses.append({
-                    'prediction': 'INSUFFICIENT_DATA',
-                    'confidence': 0,
-                    'reasoning': f'Could not scrape data for {home_team}'
-                })
+            league_info = self.LEAGUES.get(league_name)
+            if not league_info:
+                print(f"❌ League not found in database")
                 continue
 
-            time.sleep(1)  # Be nice to the server
+            # Step 1: Get upcoming fixtures
+            fixtures = self.scrape_league_fixtures(league_name)
 
-            print(f"🛫 Scraping {away_team} data...")
-            away_data = self.scrape_understat_team_data(away_normalized, league)
-
-            if not away_data:
-                print(f"  ⚠️  Could not get data for {away_team}")
-                analyses.append({
-                    'prediction': 'INSUFFICIENT_DATA',
-                    'confidence': 0,
-                    'reasoning': f'Could not scrape data for {away_team}'
-                })
+            if not fixtures:
+                print(f"\n⚠️  No fixtures found for {league_name}")
                 continue
 
-            time.sleep(1)  # Be nice to the server
+            print(f"\n📋 Analyzing {len(fixtures)} upcoming matches...\n")
 
-            # Display scraped stats
-            if 'avg_xg_home' in home_data:
-                print(f"  ✅ {home_team} at home: {home_data['avg_xg_home']} xG, {home_data['avg_xga_home']} xGA")
-            else:
-                print(f"  ✅ {home_team} overall: {home_data['avg_xg']} xG, {home_data['avg_xga']} xGA")
+            # Step 2: For each fixture, scrape team data and analyze
+            analyses = []
+            successful = 0
 
-            if 'avg_xg_away' in away_data:
-                print(f"  ✅ {away_team} away: {away_data['avg_xg_away']} xG, {away_data['avg_xga_away']} xGA")
-            else:
-                print(f"  ✅ {away_team} overall: {away_data['avg_xg']} xG, {away_data['avg_xga']} xGA")
+            understat_code = league_info.get('understat')
 
-            # Analyze the match
-            print(f"  🔮 Analyzing...")
-            analysis = self.analyze_over_under_advanced(home_data, away_data)
-            analyses.append(analysis)
-            successful += 1
+            for i, fixture in enumerate(fixtures, 1):
+                home_team = fixture['home_team']
+                away_team = fixture['away_team']
 
-            print(f"  📊 Prediction: {analysis['prediction']} ({analysis['confidence']}% confidence)")
+                print(f"\n[{i}/{len(fixtures)}] {home_team} vs {away_team}")
+                print("-" * 60)
 
-        # Step 3: Generate comprehensive report
-        print("\n" + "="*80)
-        print(f"✅ Successfully analyzed {successful}/{len(fixtures)} matches")
-        print("="*80 + "\n")
+                # Try Understat if available for this league
+                home_data = None
+                away_data = None
 
-        if successful > 0:
-            self.generate_report(fixtures, analyses)
+                if understat_code:
+                    # Normalize team names for Understat
+                    home_normalized = self.normalize_team_name(home_team)
+                    away_normalized = self.normalize_team_name(away_team)
+
+                    print(f"🏠 Scraping {home_team} data from Understat...")
+                    home_data = self.scrape_understat_team_data(home_normalized, understat_code)
+                    time.sleep(1)
+
+                    print(f"🛫 Scraping {away_team} data from Understat...")
+                    away_data = self.scrape_understat_team_data(away_normalized, understat_code)
+                    time.sleep(1)
+
+                # If Understat failed or not available, use estimated data
+                if not home_data or not away_data:
+                    print(f"  ⚠️  Using league average estimates (no Understat data)")
+                    # Use league average data as fallback
+                    if not home_data:
+                        home_data = {
+                            'avg_xg': 1.35,
+                            'avg_xga': 1.35,
+                            'total_matches': 10,
+                            'over_25_count': 5
+                        }
+                    if not away_data:
+                        away_data = {
+                            'avg_xg': 1.35,
+                            'avg_xga': 1.35,
+                            'total_matches': 10,
+                            'over_25_count': 5
+                        }
+
+                # Display scraped stats
+                if 'avg_xg_home' in home_data:
+                    print(f"  ✅ {home_team} at home: {home_data['avg_xg_home']} xG, {home_data['avg_xga_home']} xGA")
+                else:
+                    print(f"  ✅ {home_team} overall: {home_data['avg_xg']} xG, {home_data['avg_xga']} xGA")
+
+                if 'avg_xg_away' in away_data:
+                    print(f"  ✅ {away_team} away: {away_data['avg_xg_away']} xG, {away_data['avg_xga_away']} xGA")
+                else:
+                    print(f"  ✅ {away_team} overall: {away_data['avg_xg']} xG, {away_data['avg_xga']} xGA")
+
+                # Analyze the match
+                print(f"  🔮 Analyzing...")
+                analysis = self.analyze_over_under_advanced(home_data, away_data)
+                analyses.append(analysis)
+                successful += 1
+
+                print(f"  📊 Prediction: {analysis['prediction']} ({analysis['confidence']}% confidence)")
+
+            # Store results for this league
+            all_fixtures.extend(fixtures)
+            all_analyses.extend(analyses)
+            total_successful += successful
+
+            # Generate league-specific report
+            if successful > 0:
+                print("\n" + "="*80)
+                print(f"✅ {league_name}: Successfully analyzed {successful}/{len(fixtures)} matches")
+                print("="*80 + "\n")
+
+        # Step 3: Generate comprehensive report for all leagues
+        if total_successful > 0:
+            print("\n" + "="*80)
+            print(f"📊 OVERALL SUMMARY: {total_successful} matches analyzed across {len(league_names)} league(s)")
+            print("="*80 + "\n")
+
+            self.generate_report(all_fixtures, all_analyses)
 
             # Ask to export
             export = input("\nExport results to JSON? (y/n): ").lower()
             if export == 'y':
-                filename = f"predictions_{league}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+                filename = f"predictions_multi_league_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
                 with open(filename, 'w') as f:
                     json.dump({
                         'generated': datetime.now().isoformat(),
-                        'league': league,
-                        'fixtures': fixtures,
-                        'analyses': analyses
+                        'leagues': league_names,
+                        'fixtures': all_fixtures,
+                        'analyses': all_analyses
                     }, f, indent=2)
                 print(f"✅ Results exported to {filename}")
+        else:
+            print("\n❌ No matches were successfully analyzed.")
 
 
 def main():
@@ -849,7 +1158,7 @@ def main():
     scraper = FootballXGScraper()
 
     print("\nChoose mode:")
-    print("1. 🤖 AUTO-SCRAPE (Premier League) - Automatically scrape & analyze upcoming matches")
+    print("1. 🤖 AUTO-SCRAPE - Automatically scrape & analyze upcoming matches")
     print("2. ✍️  Manual entry - Enter team stats directly")
     print("3. 📊 Demo mode - See sample predictions")
 
@@ -857,7 +1166,109 @@ def main():
 
     if mode == "1":
         # AUTO-SCRAPE MODE - Main feature!
-        scraper.auto_scrape_and_analyze(league='EPL')
+        print("\n" + "="*80)
+        print("SELECT LEAGUES TO ANALYZE")
+        print("="*80)
+
+        # Group leagues by category
+        print("\n🌍 INTERNATIONAL TOURNAMENTS:")
+        print("  1. FIFA World Cup")
+        print("  2. UEFA Euro")
+        print("  3. Copa America")
+        print("  4. Africa Cup of Nations")
+        print("  5. UEFA Nations League")
+
+        print("\n🏆 EUROPEAN CLUB COMPETITIONS:")
+        print("  6. UEFA Champions League")
+        print("  7. UEFA Europa League")
+        print("  8. UEFA Europa Conference League")
+
+        print("\n⭐ TOP 5 EUROPEAN LEAGUES (Full xG data):")
+        print("  9. Premier League (England)")
+        print(" 10. La Liga (Spain)")
+        print(" 11. Serie A (Italy)")
+        print(" 12. Bundesliga (Germany)")
+        print(" 13. Ligue 1 (France)")
+
+        print("\n🏴󠁧󠁢󠁥󠁮󠁧󠁿 ENGLISH FOOTBALL:")
+        print(" 14. EFL Championship")
+        print(" 15. EFL League One")
+        print(" 16. EFL League Two")
+        print(" 17. FA Cup")
+
+        print("\n🌎 SOUTH AMERICAN FOOTBALL:")
+        print(" 18. Copa Libertadores")
+        print(" 19. Copa Sudamericana")
+        print(" 20. Brasileirao Serie A")
+        print(" 21. Brasileirao Serie B")
+        print(" 22. Copa do Brasil")
+        print(" 23. Liga Profesional Argentina")
+        print(" 24. Copa de la Liga Argentina")
+        print(" 25. Copa Argentina")
+        print(" 26. Primera Division Chile")
+        print(" 27. Liga Pro Ecuador")
+        print(" 28. Categoria Primera A Colombia")
+        print(" 29. Liga MX (Mexico)")
+
+        print("\n💡 TIP: Enter 'all' for all leagues, or numbers separated by commas (e.g., 9,10,11)")
+        print("💡 Or press Enter for recommended leagues (Top 5 European)")
+
+        selection = input("\nYour selection: ").strip().lower()
+
+        # Map numbers to league names
+        league_map = {
+            1: 'FIFA World Cup',
+            2: 'UEFA Euro',
+            3: 'Copa America',
+            4: 'Africa Cup of Nations',
+            5: 'UEFA Nations League',
+            6: 'UEFA Champions League',
+            7: 'UEFA Europa League',
+            8: 'UEFA Europa Conference League',
+            9: 'Premier League',
+            10: 'La Liga',
+            11: 'Serie A',
+            12: 'Bundesliga',
+            13: 'Ligue 1',
+            14: 'EFL Championship',
+            15: 'EFL League One',
+            16: 'EFL League Two',
+            17: 'FA Cup',
+            18: 'Copa Libertadores',
+            19: 'Copa Sudamericana',
+            20: 'Brasileirao Serie A',
+            21: 'Brasileirao Serie B',
+            22: 'Copa do Brasil',
+            23: 'Liga Profesional Argentina',
+            24: 'Copa de la Liga Argentina',
+            25: 'Copa Argentina',
+            26: 'Primera Division Chile',
+            27: 'Liga Pro Ecuador',
+            28: 'Categoria Primera A Colombia',
+            29: 'Liga MX',
+        }
+
+        selected_leagues = []
+
+        if selection == 'all':
+            selected_leagues = list(league_map.values())
+        elif not selection:
+            # Default: Top 5 European leagues
+            selected_leagues = ['Premier League', 'La Liga', 'Serie A', 'Bundesliga', 'Ligue 1']
+        else:
+            # Parse comma-separated numbers
+            try:
+                numbers = [int(n.strip()) for n in selection.split(',')]
+                selected_leagues = [league_map[n] for n in numbers if n in league_map]
+            except:
+                print("❌ Invalid selection. Using Top 5 European leagues as default.")
+                selected_leagues = ['Premier League', 'La Liga', 'Serie A', 'Bundesliga', 'Ligue 1']
+
+        if not selected_leagues:
+            print("❌ No leagues selected. Exiting.")
+            return
+
+        scraper.auto_scrape_and_analyze(league_names=selected_leagues)
 
     elif mode == "2":
         # Manual entry mode
