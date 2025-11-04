@@ -256,11 +256,12 @@ class FootballXGScraper:
         1. Calculates expected goals using opponent-adjusted metrics
         2. Uses Poisson distribution for probability calculations
         3. Properly integrates both xG (attack) and xGA (defense)
-        4. Provides statistical confidence intervals
+        4. Uses venue-specific stats (home xG/xGA vs away xG/xGA)
+        5. Provides statistical confidence intervals
 
         Args:
-            home_data: Home team xG/xGA statistics
-            away_data: Away team xG/xGA statistics
+            home_data: Home team's HOME venue statistics (avg_xg_home, avg_xga_home)
+            away_data: Away team's AWAY venue statistics (avg_xg_away, avg_xga_away)
 
         Returns:
             Detailed analysis with probabilities
@@ -268,11 +269,15 @@ class FootballXGScraper:
         if not home_data or not away_data:
             return {'prediction': 'INSUFFICIENT_DATA', 'confidence': 0, 'reasoning': 'Missing team data'}
 
-        # Extract metrics
-        home_attack = home_data.get('avg_xg', 0)  # Home team's attacking strength
-        home_defense = home_data.get('avg_xga', 0)  # Home team's defensive weakness
-        away_attack = away_data.get('avg_xg', 0)  # Away team's attacking strength
-        away_defense = away_data.get('avg_xga', 0)  # Away team's defensive weakness
+        # Extract venue-specific metrics (home team at home, away team away)
+        # Note: If venue-specific data not available, falls back to overall stats
+        home_attack = home_data.get('avg_xg_home', home_data.get('avg_xg', 0))
+        home_defense = home_data.get('avg_xga_home', home_data.get('avg_xga', 0))
+        away_attack = away_data.get('avg_xg_away', away_data.get('avg_xg', 0))
+        away_defense = away_data.get('avg_xga_away', away_data.get('avg_xga', 0))
+
+        # Track if using venue-specific data
+        using_venue_specific = ('avg_xg_home' in home_data and 'avg_xg_away' in away_data)
 
         # Method 1: Opponent-adjusted expected goals
         # Home team expected goals = (Home attack + Away defensive weakness) / 2
@@ -300,9 +305,13 @@ class FootballXGScraper:
         home_lambda = 0.6 * home_expected_v1 + 0.4 * home_expected_v2
         away_lambda = 0.6 * away_expected_v1 + 0.4 * away_expected_v2
 
-        # Add home advantage factor (typically ~0.2-0.3 goals)
-        home_advantage = 0.25
-        home_lambda += home_advantage
+        # Only add generic home advantage if NOT using venue-specific stats
+        # (venue-specific stats already include home advantage)
+        if not using_venue_specific:
+            home_advantage = 0.25
+            home_lambda += home_advantage
+        else:
+            home_advantage = 0.0  # No adjustment needed
 
         # Calculate probabilities using Poisson distribution
         prob_results = self._calculate_match_probabilities(home_lambda, away_lambda)
@@ -343,9 +352,14 @@ class FootballXGScraper:
         reasoning.append(f"  Under 2.5 probability: {under_probability:.1f}%")
         reasoning.append(f"  Edge: {edge:.1f}% ({confidence_level} confidence)")
         reasoning.append(f"")
-        reasoning.append(f"TEAM METRICS:")
-        reasoning.append(f"  Home - Attack: {home_attack:.2f} xG, Defense: {home_defense:.2f} xGA")
-        reasoning.append(f"  Away - Attack: {away_attack:.2f} xG, Defense: {away_defense:.2f} xGA")
+
+        venue_note = " (VENUE-SPECIFIC)" if using_venue_specific else " (overall + home advantage)"
+        reasoning.append(f"TEAM METRICS{venue_note}:")
+        reasoning.append(f"  Home team AT HOME - Attack: {home_attack:.2f} xG, Defense: {home_defense:.2f} xGA")
+        reasoning.append(f"  Away team AWAY - Attack: {away_attack:.2f} xG, Defense: {away_defense:.2f} xGA")
+        if not using_venue_specific:
+            reasoning.append(f"  ⚠️ Using overall stats + {home_advantage:.2f} home advantage adjustment")
+            reasoning.append(f"  💡 TIP: Use venue-specific stats for better accuracy!")
         reasoning.append(f"")
         reasoning.append(f"VALIDATION:")
         reasoning.append(f"  Historical over 2.5 rate: {historical_over_rate*100:.1f}%")
@@ -596,18 +610,48 @@ def main():
     mode = input("\nEnter choice (1-3): ").strip() or "1"
 
     if mode == "3":
-        # Demo mode with sample data
+        # Demo mode with venue-specific sample data
+        print("\n📊 Demo mode: Using realistic venue-specific data")
+        print("   (Notice the difference between home/away performance)\n")
+
         fixtures = [
             {'home_team': 'Manchester City', 'away_team': 'Liverpool', 'date': '2024-11-10'},
-            {'home_team': 'Arsenal', 'away_team': 'Chelsea', 'date': '2024-11-10'},
+            {'home_team': 'Bournemouth', 'away_team': 'Brighton', 'date': '2024-11-10'},
         ]
 
-        # Sample data (replace with real scraping)
-        home_data_1 = {'avg_xg': 2.3, 'avg_xga': 0.9, 'total_matches': 10, 'over_25_count': 7}
-        away_data_1 = {'avg_xg': 2.1, 'avg_xga': 1.1, 'total_matches': 10, 'over_25_count': 8}
+        # Fixture 1: Man City (home) vs Liverpool (away)
+        # Man City at home - dominant attack, strong defense
+        home_data_1 = {
+            'avg_xg_home': 2.5,   # City creates more chances at home
+            'avg_xga_home': 0.7,  # Very strong defense at home
+            'total_matches': 10,
+            'over_25_count': 7
+        }
 
-        home_data_2 = {'avg_xg': 1.8, 'avg_xga': 1.0, 'total_matches': 10, 'over_25_count': 5}
-        away_data_2 = {'avg_xg': 1.6, 'avg_xga': 1.2, 'total_matches': 10, 'over_25_count': 6}
+        # Liverpool away - good attack, but weaker defense away
+        away_data_1 = {
+            'avg_xg_away': 1.8,   # Still good away, but less than at home (2.3)
+            'avg_xga_away': 1.2,  # Concede more away than at home (0.9)
+            'total_matches': 10,
+            'over_25_count': 6
+        }
+
+        # Fixture 2: Bournemouth (home) vs Brighton (away)
+        # Bournemouth at home - decent attack, vulnerable defense
+        home_data_2 = {
+            'avg_xg_home': 1.6,   # Better at home than away (1.2)
+            'avg_xga_home': 1.4,  # Weak defense at home
+            'total_matches': 10,
+            'over_25_count': 6
+        }
+
+        # Brighton away - moderate attack, okay defense
+        away_data_2 = {
+            'avg_xg_away': 1.3,   # Weaker away than at home (1.7)
+            'avg_xga_away': 1.3,  # Similar defense away
+            'total_matches': 10,
+            'over_25_count': 5
+        }
 
         # Use advanced Poisson-based analysis
         analyses = [
@@ -629,29 +673,61 @@ def main():
 
         for fixture in fixtures:
             print(f"\n--- Analyzing: {fixture['home_team']} vs {fixture['away_team']} ---")
-            print("Enter HOME team statistics (last 10 matches average):")
-            home_xg = float(input("  Average xG: ") or "1.5")
-            home_xga = float(input("  Average xGA: ") or "1.2")
-            home_over = int(input("  Number of over 2.5 matches (out of 10): ") or "5")
+            print("\n💡 For best accuracy, enter VENUE-SPECIFIC stats:")
+            print("   - Home team: stats from HOME matches only")
+            print("   - Away team: stats from AWAY matches only")
+            print()
 
-            print("Enter AWAY team statistics (last 10 matches average):")
-            away_xg = float(input("  Average xG: ") or "1.4")
-            away_xga = float(input("  Average xGA: ") or "1.3")
-            away_over = int(input("  Number of over 2.5 matches (out of 10): ") or "5")
+            use_venue = input("Use venue-specific stats? (y/n, default=y): ").lower() or "y"
 
-            home_data = {
-                'avg_xg': home_xg,
-                'avg_xga': home_xga,
-                'total_matches': 10,
-                'over_25_count': home_over
-            }
+            if use_venue == "y":
+                print(f"\nEnter {fixture['home_team']} stats AT HOME (last 10 HOME matches):")
+                home_xg = float(input("  xG at home: ") or "1.7")
+                home_xga = float(input("  xGA at home: ") or "1.0")
+                home_over = int(input("  Over 2.5 in home matches (out of 10): ") or "6")
 
-            away_data = {
-                'avg_xg': away_xg,
-                'avg_xga': away_xga,
-                'total_matches': 10,
-                'over_25_count': away_over
-            }
+                print(f"\nEnter {fixture['away_team']} stats AWAY (last 10 AWAY matches):")
+                away_xg = float(input("  xG away: ") or "1.3")
+                away_xga = float(input("  xGA away: ") or "1.4")
+                away_over = int(input("  Over 2.5 in away matches (out of 10): ") or "4")
+
+                home_data = {
+                    'avg_xg_home': home_xg,
+                    'avg_xga_home': home_xga,
+                    'total_matches': 10,
+                    'over_25_count': home_over
+                }
+
+                away_data = {
+                    'avg_xg_away': away_xg,
+                    'avg_xga_away': away_xga,
+                    'total_matches': 10,
+                    'over_25_count': away_over
+                }
+            else:
+                print(f"\nEnter {fixture['home_team']} overall stats (last 10 matches):")
+                home_xg = float(input("  Average xG: ") or "1.5")
+                home_xga = float(input("  Average xGA: ") or "1.2")
+                home_over = int(input("  Number of over 2.5 matches (out of 10): ") or "5")
+
+                print(f"\nEnter {fixture['away_team']} overall stats (last 10 matches):")
+                away_xg = float(input("  Average xG: ") or "1.4")
+                away_xga = float(input("  Average xGA: ") or "1.3")
+                away_over = int(input("  Number of over 2.5 matches (out of 10): ") or "5")
+
+                home_data = {
+                    'avg_xg': home_xg,
+                    'avg_xga': home_xga,
+                    'total_matches': 10,
+                    'over_25_count': home_over
+                }
+
+                away_data = {
+                    'avg_xg': away_xg,
+                    'avg_xga': away_xga,
+                    'total_matches': 10,
+                    'over_25_count': away_over
+                }
 
             # Use advanced Poisson-based analysis
             analysis = scraper.analyze_over_under_advanced(home_data, away_data)

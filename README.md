@@ -44,6 +44,34 @@ Total Expected = Home Expected + Away Expected
 - Strong attack vs weak defense = goal explosion
 - Weak attack vs strong defense = low scoring
 
+### 7. **🏠 HOME/AWAY SPLITS (CRITICAL!)** ⭐
+
+**This is the most important factor for accuracy!**
+
+Teams perform **very differently** at home vs away:
+
+**Example - Manchester City (2024/25 season):**
+- **At Home**: 2.5 xG, 0.7 xGA (dominant)
+- **Away**: 1.9 xG, 1.1 xGA (still good, but much different)
+- **Difference**: 0.6 xG and 0.4 xGA swing!
+
+**Why Home/Away Matters:**
+- Home advantage is real (crowd, familiarity, travel)
+- Some teams have **huge** home/away splits
+- Using overall stats + generic adjustment is less accurate
+- Venue-specific stats already include home advantage
+
+**This Tool's Approach:**
+- ✅ **Option 1 (BEST)**: Enter home team's HOME stats + away team's AWAY stats
+- ⚠️ **Option 2 (OK)**: Enter overall stats, tool adds +0.25 goal home advantage
+- ❌ **Don't**: Use same overall stats for both teams
+
+**Where to Find Home/Away Splits:**
+1. **Understat.com** - Filter by home/away matches
+2. **FBref.com** - "Home" and "Away" tables
+3. **FootballXG.com** - Venue-specific filters
+4. **Manual calculation** - Track last 10 home/away matches separately
+
 ## 🔢 Prediction Rules
 
 ### Strong OVER 2.5 Signals:
@@ -89,34 +117,49 @@ Choose mode: 3
 - See sample predictions with realistic data
 - Understand the output format
 
-#### 2. **Manual Entry Mode**
+#### 2. **Manual Entry Mode** ⭐ BEST FOR REAL ANALYSIS
 ```
 Choose mode: 1
 ```
 - Enter fixtures and team stats manually
-- Perfect for quick analysis
+- **Use venue-specific stats for best accuracy!**
 - Get xG data from sites like:
-  - [Understat](https://understat.com/)
-  - [FBref](https://fbref.com/)
+  - [Understat](https://understat.com/) - Best for home/away splits
+  - [FBref](https://fbref.com/) - Comprehensive home/away tables
   - [FootballXG](https://footballxg.com/)
   - [xGscore](https://xgscore.io/)
 
-**Example Manual Entry:**
+**Example Manual Entry (Venue-Specific):**
 ```
 Home team: Manchester City
 Away team: Liverpool
 Date: 2024-11-10
 
-HOME team statistics:
-  Average xG: 2.3
-  Average xGA: 0.9
-  Over 2.5 matches: 7
+Use venue-specific stats? y
 
-AWAY team statistics:
-  Average xG: 2.1
-  Average xGA: 1.1
-  Over 2.5 matches: 8
+Manchester City stats AT HOME (last 10 HOME matches):
+  xG at home: 2.5
+  xGA at home: 0.7
+  Over 2.5 in home matches: 7
+
+Liverpool stats AWAY (last 10 AWAY matches):
+  xG away: 1.8
+  xGA away: 1.2
+  Over 2.5 in away matches: 6
 ```
+
+**How to Get Venue-Specific Stats:**
+
+On **Understat.com**:
+1. Go to team page (e.g., understat.com/team/Manchester_City/2024)
+2. Click "Home" or "Away" filter
+3. Look at average xG/xGA for last 10 matches
+
+On **FBref.com**:
+1. Go to team page
+2. Scroll to "Scores & Fixtures" table
+3. Filter by "Home" or "Away"
+4. Calculate average from recent matches
 
 #### 3. **Auto-Scrape Mode** (Experimental)
 ```
