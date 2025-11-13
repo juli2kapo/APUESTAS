@@ -246,6 +246,9 @@ class FootballXGScraper:
         self.session = requests.Session()
         self.session.headers.update(self.headers)
 
+        # Football-Data.org API key (hardcoded for multi-machine usage)
+        self.football_data_api_key = '9373f6cc6ce54a348eb1e5cfd2a4de65'
+
     def _fetch_with_retry(self, url: str, max_retries: int = 3, timeout: int = 15) -> Optional[requests.Response]:
         """
         Fetch URL with exponential backoff retry logic
@@ -666,9 +669,9 @@ class FootballXGScraper:
         except Exception as e:
             return False
 
-    def scrape_league_fixtures(self, league_name: str, hours_ahead: int = 24) -> List[Dict]:
+    def scrape_football_data_api(self, league_name: str, hours_ahead: int = 24) -> List[Dict]:
         """
-        Scrape upcoming fixtures for any league from FBref (within specified hours)
+        Fetch upcoming fixtures from Football-Data.org API
 
         Args:
             league_name: Name of league from LEAGUES dict
@@ -677,6 +680,96 @@ class FootballXGScraper:
         Returns:
             List of upcoming fixtures with team names
         """
+        if not self.football_data_api_key:
+            return []
+
+        # Map league names to Football-Data.org competition IDs
+        league_id_map = {
+            'Premier League': 'PL',
+            'La Liga': 'PD',
+            'Bundesliga': 'BL1',
+            'Serie A': 'SA',
+            'Ligue 1': 'FL1',
+            'UEFA Champions League': 'CL',
+            'UEFA Europa League': 'EL',
+            'UEFA Euro': 'EC',
+            'FIFA World Cup': 'WC',
+            'Brasileirao Serie A': 'BSA',
+            'Eredivisie': 'DED',
+            'Primeira Liga': 'PPL'
+        }
+
+        league_id = league_id_map.get(league_name)
+        if not league_id:
+            return []
+
+        try:
+            url = f'https://api.football-data.org/v4/competitions/{league_id}/matches'
+
+            # Make request with API key
+            response = self.session.get(
+                url,
+                headers={'X-Auth-Token': self.football_data_api_key},
+                timeout=10
+            )
+
+            if response.status_code != 200:
+                return []
+
+            data = response.json()
+            fixtures = []
+            now = datetime.now()
+            cutoff_time = now + timedelta(hours=hours_ahead)
+
+            for match in data.get('matches', []):
+                match_date_str = match.get('utcDate', '')
+                if not match_date_str:
+                    continue
+
+                try:
+                    # Parse ISO 8601 format: 2025-11-13T19:00:00Z
+                    match_date = datetime.strptime(match_date_str, "%Y-%m-%dT%H:%M:%SZ")
+
+                    # Check if match is within the time window
+                    if now <= match_date <= cutoff_time:
+                        fixtures.append({
+                            'date': match_date.strftime('%Y-%m-%d %H:%M'),
+                            'home_team': match['homeTeam']['name'],
+                            'away_team': match['awayTeam']['name'],
+                            'league': league_name
+                        })
+                except Exception as e:
+                    continue
+
+            return fixtures
+
+        except Exception as e:
+            print(f"  ⚠️  Football-Data.org API error: {e}")
+            return []
+
+    def scrape_league_fixtures(self, league_name: str, hours_ahead: int = 24) -> List[Dict]:
+        """
+        Scrape upcoming fixtures for any league (tries API first, then FBref)
+
+        Args:
+            league_name: Name of league from LEAGUES dict
+            hours_ahead: Only get matches within this many hours (default: 24)
+
+        Returns:
+            List of upcoming fixtures with team names
+        """
+        # Try Football-Data.org API first (if available for this league)
+        print(f"\n🔍 Fetching {league_name} fixtures...")
+        print(f"  1️⃣  Trying Football-Data.org API...", end=' ')
+        fixtures = self.scrape_football_data_api(league_name, hours_ahead)
+        if fixtures:
+            print(f"✅ Found {len(fixtures)} fixtures")
+            return fixtures
+        else:
+            print(f"❌")
+
+        # Fall back to FBref
+        print(f"  2️⃣  Trying FBref...", end=' ')
         try:
             league_info = self.LEAGUES.get(league_name)
             if not league_info:
@@ -689,11 +782,10 @@ class FootballXGScraper:
             # Construct FBref URL
             url = f"https://fbref.com/en/comps/{fbref_id}/schedule/{fbref_name}-Scores-and-Fixtures"
 
-            print(f"\n🔍 Fetching {league_name} fixtures from FBref...")
-
             response = self._fetch_with_retry(url, max_retries=3, timeout=15)
             if not response:
-                print(f"⚠️  Could not fetch fixtures (network error or bad status)")
+                print(f"❌")
+                print(f"⚠️  Could not fetch fixtures from any source")
                 return []
 
             soup = BeautifulSoup(response.content, 'html.parser')
@@ -1281,9 +1373,11 @@ class FootballXGScraper:
         print(f"⏰ Filtering: Only matches in the NEXT 24 HOURS")
         print(f"📋 Analyzing {len(league_names)} league(s):")
         print(f"\n🔍 DATA SOURCE STRATEGY (No Fictitious Data!):")
-        print(f"  1️⃣  Try Understat (Top 5 leagues - best quality)")
-        print(f"  2️⃣  Try FBref (all leagues - team-specific xG)")
-        print(f"  ❌  If both fail → SKIP GAME (no fake data!)")
+        print(f"  📅 Fixtures: Football-Data.org API → FBref")
+        print(f"  📊 Team Stats: Understat (Top 5 leagues) → FBref")
+        print(f"  ❌  If no real data found → SKIP GAME (no fake data!)")
+        if self.football_data_api_key:
+            print(f"  ✅ Football-Data.org API: Configured")
         print()
         for league in league_names:
             understat_code = self.LEAGUES.get(league, {}).get('understat')
