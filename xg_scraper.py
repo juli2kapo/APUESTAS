@@ -246,8 +246,10 @@ class FootballXGScraper:
         self.session = requests.Session()
         self.session.headers.update(self.headers)
 
-        # Football-Data.org API key (hardcoded for multi-machine usage)
+        # API keys (hardcoded for multi-machine usage)
         self.football_data_api_key = '9373f6cc6ce54a348eb1e5cfd2a4de65'
+        self.api_football_key = None  # Get free key at: https://www.api-football.com/
+        self.thesportsdb_key = '3'  # Free tier key
 
     def _fetch_with_retry(self, url: str, max_retries: int = 3, timeout: int = 15) -> Optional[requests.Response]:
         """
@@ -669,6 +671,222 @@ class FootballXGScraper:
         except Exception as e:
             return False
 
+    def scrape_api_football(self, league_name: str, hours_ahead: int = 24) -> List[Dict]:
+        """
+        Fetch fixtures from API-Football (API-Sports)
+        Coverage: 1000+ leagues worldwide
+        """
+        if not self.api_football_key:
+            return []
+
+        # API-Football league IDs
+        league_id_map = {
+            'Premier League': 39,
+            'La Liga': 140,
+            'Bundesliga': 78,
+            'Serie A': 135,
+            'Ligue 1': 61,
+            'UEFA Champions League': 2,
+            'UEFA Europa League': 3,
+            'Copa Libertadores': 13,
+            'Brasileirao Serie A': 71,
+            'Brasileirao Serie B': 72,
+            'Liga Profesional Argentina': 128,
+            'Primera Division Chile': 265,
+            'Liga MX': 262,
+            'EFL Championship': 40,
+            'Copa America': 9,
+            'FIFA World Cup': 1
+        }
+
+        league_id = league_id_map.get(league_name)
+        if not league_id:
+            return []
+
+        try:
+            url = 'https://v3.football.api-sports.io/fixtures'
+            headers = {
+                'x-rapidapi-key': self.api_football_key,
+                'x-rapidapi-host': 'v3.football.api-sports.io'
+            }
+
+            # Get today's date
+            today = datetime.now().strftime('%Y-%m-%d')
+
+            response = self.session.get(
+                url,
+                headers=headers,
+                params={'league': league_id, 'date': today, 'timezone': 'UTC'},
+                timeout=10
+            )
+
+            if response.status_code != 200:
+                return []
+
+            data = response.json()
+            fixtures = []
+            now = datetime.now()
+            cutoff_time = now + timedelta(hours=hours_ahead)
+
+            for match in data.get('response', []):
+                match_date_str = match['fixture']['date']
+                try:
+                    match_date = datetime.strptime(match_date_str, "%Y-%m-%dT%H:%M:%S%z").replace(tzinfo=None)
+
+                    if now <= match_date <= cutoff_time:
+                        fixtures.append({
+                            'date': match_date.strftime('%Y-%m-%d %H:%M'),
+                            'home_team': match['teams']['home']['name'],
+                            'away_team': match['teams']['away']['name'],
+                            'league': league_name
+                        })
+                except Exception as e:
+                    continue
+
+            return fixtures
+
+        except Exception as e:
+            return []
+
+    def scrape_thesportsdb_api(self, league_name: str, hours_ahead: int = 24) -> List[Dict]:
+        """
+        Fetch fixtures from TheSportsDB (free tier)
+        """
+        if not self.thesportsdb_key:
+            return []
+
+        # TheSportsDB league IDs
+        league_id_map = {
+            'Premier League': '4328',
+            'La Liga': '4335',
+            'Bundesliga': '4331',
+            'Serie A': '4332',
+            'Ligue 1': '4334',
+            'UEFA Champions League': '4480',
+            'Brasileirao Serie A': '4351',
+            'Liga Profesional Argentina': '4406',
+            'Liga MX': '4424'
+        }
+
+        league_id = league_id_map.get(league_name)
+        if not league_id:
+            return []
+
+        try:
+            url = f'https://www.thesportsdb.com/api/v1/json/{self.thesportsdb_key}/eventsnextleague.php'
+
+            response = self.session.get(
+                url,
+                params={'id': league_id},
+                timeout=10
+            )
+
+            if response.status_code != 200:
+                return []
+
+            data = response.json()
+            fixtures = []
+            now = datetime.now()
+            cutoff_time = now + timedelta(hours=hours_ahead)
+
+            for match in data.get('events', []) or []:
+                date_str = match.get('dateEvent', '')
+                time_str = match.get('strTime', '00:00:00')
+
+                if not date_str:
+                    continue
+
+                try:
+                    # Parse date and time
+                    match_datetime_str = f"{date_str} {time_str}"
+                    match_date = datetime.strptime(match_datetime_str, "%Y-%m-%d %H:%M:%S")
+
+                    if now <= match_date <= cutoff_time:
+                        fixtures.append({
+                            'date': match_date.strftime('%Y-%m-%d %H:%M'),
+                            'home_team': match.get('strHomeTeam', ''),
+                            'away_team': match.get('strAwayTeam', ''),
+                            'league': league_name
+                        })
+                except Exception as e:
+                    continue
+
+            return fixtures
+
+        except Exception as e:
+            return []
+
+    def scrape_espn_api(self, league_name: str, hours_ahead: int = 24) -> List[Dict]:
+        """
+        Fetch fixtures from ESPN (public JSON endpoints)
+        """
+        # ESPN league slugs
+        league_slug_map = {
+            'Premier League': 'eng.1',
+            'La Liga': 'esp.1',
+            'Bundesliga': 'ger.1',
+            'Serie A': 'ita.1',
+            'Ligue 1': 'fra.1',
+            'UEFA Champions League': 'uefa.champions',
+            'UEFA Europa League': 'uefa.europa',
+            'Copa Libertadores': 'conmebol.libertadores',
+            'Brasileirao Serie A': 'bra.1',
+            'Liga Profesional Argentina': 'arg.1',
+            'Liga MX': 'mex.1',
+            'EFL Championship': 'eng.2'
+        }
+
+        league_slug = league_slug_map.get(league_name)
+        if not league_slug:
+            return []
+
+        try:
+            url = f'https://site.api.espn.com/apis/site/v2/sports/soccer/{league_slug}/scoreboard'
+
+            response = self.session.get(url, timeout=10)
+
+            if response.status_code != 200:
+                return []
+
+            data = response.json()
+            fixtures = []
+            now = datetime.now()
+            cutoff_time = now + timedelta(hours=hours_ahead)
+
+            for event in data.get('events', []):
+                date_str = event.get('date', '')
+                if not date_str:
+                    continue
+
+                try:
+                    # Parse ISO format
+                    match_date = datetime.strptime(date_str, "%Y-%m-%dT%H:%MZ")
+
+                    # Only upcoming matches
+                    status = event.get('status', {}).get('type', {}).get('name', '')
+                    if status == 'STATUS_SCHEDULED' and now <= match_date <= cutoff_time:
+                        competitions = event.get('competitions', [])
+                        if competitions:
+                            competitors = competitions[0].get('competitors', [])
+                            if len(competitors) >= 2:
+                                home_team = next((c['team']['displayName'] for c in competitors if c['homeAway'] == 'home'), '')
+                                away_team = next((c['team']['displayName'] for c in competitors if c['homeAway'] == 'away'), '')
+
+                                if home_team and away_team:
+                                    fixtures.append({
+                                        'date': match_date.strftime('%Y-%m-%d %H:%M'),
+                                        'home_team': home_team,
+                                        'away_team': away_team,
+                                        'league': league_name
+                                    })
+                except Exception as e:
+                    continue
+
+            return fixtures
+
+        except Exception as e:
+            return []
+
     def scrape_football_data_api(self, league_name: str, hours_ahead: int = 24) -> List[Dict]:
         """
         Fetch upcoming fixtures from Football-Data.org API
@@ -749,7 +967,7 @@ class FootballXGScraper:
 
     def scrape_league_fixtures(self, league_name: str, hours_ahead: int = 24) -> List[Dict]:
         """
-        Scrape upcoming fixtures for any league (tries API first, then FBref)
+        Scrape upcoming fixtures trying MULTIPLE sources
 
         Args:
             league_name: Name of league from LEAGUES dict
@@ -758,18 +976,43 @@ class FootballXGScraper:
         Returns:
             List of upcoming fixtures with team names
         """
-        # Try Football-Data.org API first (if available for this league)
         print(f"\n🔍 Fetching {league_name} fixtures...")
-        print(f"  1️⃣  Trying Football-Data.org API...", end=' ')
+
+        # Try ESPN API first (no key needed, always works for supported leagues)
+        print(f"  1️⃣  ESPN API...", end=' ')
+        fixtures = self.scrape_espn_api(league_name, hours_ahead)
+        if fixtures:
+            print(f"✅ {len(fixtures)} fixtures")
+            return fixtures
+        print(f"❌")
+
+        # Try TheSportsDB (free tier)
+        print(f"  2️⃣  TheSportsDB...", end=' ')
+        fixtures = self.scrape_thesportsdb_api(league_name, hours_ahead)
+        if fixtures:
+            print(f"✅ {len(fixtures)} fixtures")
+            return fixtures
+        print(f"❌")
+
+        # Try Football-Data.org
+        print(f"  3️⃣  Football-Data.org...", end=' ')
         fixtures = self.scrape_football_data_api(league_name, hours_ahead)
         if fixtures:
-            print(f"✅ Found {len(fixtures)} fixtures")
+            print(f"✅ {len(fixtures)} fixtures")
             return fixtures
-        else:
+        print(f"❌")
+
+        # Try API-Football if key is set
+        if self.api_football_key:
+            print(f"  4️⃣  API-Football...", end=' ')
+            fixtures = self.scrape_api_football(league_name, hours_ahead)
+            if fixtures:
+                print(f"✅ {len(fixtures)} fixtures")
+                return fixtures
             print(f"❌")
 
-        # Fall back to FBref
-        print(f"  2️⃣  Trying FBref...", end=' ')
+        # Last resort: FBref scraping
+        print(f"  🔧  FBref scraping...", end=' ')
         try:
             league_info = self.LEAGUES.get(league_name)
             if not league_info:
@@ -1372,12 +1615,18 @@ class FootballXGScraper:
         print("="*80)
         print(f"⏰ Filtering: Only matches in the NEXT 24 HOURS")
         print(f"📋 Analyzing {len(league_names)} league(s):")
-        print(f"\n🔍 DATA SOURCE STRATEGY (No Fictitious Data!):")
-        print(f"  📅 Fixtures: Football-Data.org API → FBref")
-        print(f"  📊 Team Stats: Understat (Top 5 leagues) → FBref")
-        print(f"  ❌  If no real data found → SKIP GAME (no fake data!)")
+        print(f"\n🔍 MULTI-SOURCE DATA STRATEGY (No Fictitious Data!):")
+        print(f"  📅 Fixtures: ESPN → TheSportsDB → Football-Data → FBref")
+        print(f"  📊 Team Stats: Understat (Top 5) → FBref")
+        print(f"  ❌  If NO real data found → SKIP GAME")
+        print(f"\n✅ Active sources:")
+        print(f"   • ESPN API (public, no key needed)")
+        print(f"   • TheSportsDB (free tier)")
         if self.football_data_api_key:
-            print(f"  ✅ Football-Data.org API: Configured")
+            print(f"   • Football-Data.org (configured)")
+        if self.api_football_key:
+            print(f"   • API-Football (1000+ leagues)")
+        print(f"   • FBref scraping (fallback)")
         print()
         for league in league_names:
             understat_code = self.LEAGUES.get(league, {}).get('understat')
