@@ -273,8 +273,9 @@ class FootballXGScraper:
         self.session = requests.Session()
         self.session.headers.update(self.headers)
 
-        # API Keys (optional - provided by user or environment variable)
-        self.football_data_api_key = football_data_api_key or os.getenv('FOOTBALL_DATA_API_KEY')
+        # API Keys - hardcoded default, can be overridden by env var or parameter
+        default_api_key = '9373f6cc6ce54a348eb1e5cfd2a4de65'
+        self.football_data_api_key = football_data_api_key or os.getenv('FOOTBALL_DATA_API_KEY') or default_api_key
 
         # Configurable league averages (can be set by user)
         self.league_avg_xg = None
@@ -284,11 +285,41 @@ class FootballXGScraper:
         self.last_request_time = {}
         self.min_request_interval = 1.0  # seconds between requests to same domain
 
+        # Football-Data.org API rate limiting: 10 calls/minute
+        self.api_call_times = []
+        self.api_rate_limit = 10  # calls per minute
+        self.api_rate_window = 60  # seconds
+
     def _rotate_user_agent(self):
         """Rotate User-Agent to reduce bot detection"""
         new_ua = random.choice(self.user_agents)
         self.session.headers.update({'User-Agent': new_ua})
         logger.debug(f"Rotated User-Agent to: {new_ua[:50]}...")
+
+    def _api_rate_limit(self):
+        """
+        Enforce Football-Data.org API rate limit: 10 calls per minute
+        Waits if necessary to stay within rate limit
+        """
+        current_time = time.time()
+
+        # Remove API call times older than 60 seconds
+        self.api_call_times = [t for t in self.api_call_times if current_time - t < self.api_rate_window]
+
+        # If we've made 10 calls in the last minute, wait
+        if len(self.api_call_times) >= self.api_rate_limit:
+            # Calculate how long to wait
+            oldest_call = self.api_call_times[0]
+            wait_time = self.api_rate_window - (current_time - oldest_call)
+            if wait_time > 0:
+                logger.info(f"API rate limit reached (10 calls/minute). Waiting {wait_time:.1f}s...")
+                time.sleep(wait_time + 0.1)  # Add small buffer
+                # Clean up old times after waiting
+                current_time = time.time()
+                self.api_call_times = [t for t in self.api_call_times if current_time - t < self.api_rate_window]
+
+        # Record this API call
+        self.api_call_times.append(current_time)
 
     def _rate_limit(self, url: str):
         """Enforce rate limiting per domain"""
@@ -953,6 +984,9 @@ class FootballXGScraper:
                 return []
 
             logger.info(f"🔍 [1/3] Trying Football-Data.org API for {league_name}...")
+
+            # Enforce API rate limit (10 calls/minute)
+            self._api_rate_limit()
 
             url = f"https://api.football-data.org/v4/competitions/{league_code}/matches"
             headers = {
