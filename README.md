@@ -333,13 +333,17 @@ Obscure League - Unknown Team A vs Unknown Team B:
 - ✅ **Data validation** - xG values checked for realism (0-5 range)
 - ✅ **Network resilience** - automatic retry with exponential backoff
 
-**Data Sources (3-Tier Approach):**
-- **Fixtures**: FBref.com (all 33 leagues)
+**Data Sources:**
+- **Fixtures**:
+  - Understat (Top 5 leagues - placeholder for future implementation)
+  - FBref (all leagues, 3 URL formats)
+  - **Note**: FBref may block datacenter IPs. Best results from residential networks.
 - **xG Data Tier 1**: Understat.com (Top 5 leagues, home/away splits)
 - **xG Data Tier 2**: FBref.com (team-specific data, all leagues)
-- **xG Data Tier 3**: SKIP (no fictitious data!)
+- **xG Data Tier 3**: Alternative sources framework (extensible)
+- **xG Data Tier 4**: SKIP (no fictitious data!)
 - **Analysis**: Advanced Poisson probability model
-- **Reliability**: 3 retry attempts with exponential backoff for network errors
+- **Reliability**: 4 retry attempts with exponential backoff + User-Agent rotation
 
 **Key Features:**
 - ⏰ **24-hour filter**: Only matches happening soon

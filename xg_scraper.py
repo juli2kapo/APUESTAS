@@ -916,9 +916,34 @@ class FootballXGScraper:
         except Exception as e:
             return False
 
+    def scrape_understat_fixtures(self, league_name: str) -> List[Dict]:
+        """
+        Try to get fixtures from Understat (Top 5 leagues only)
+
+        Args:
+            league_name: Name of league
+
+        Returns:
+            List of fixtures (currently empty - needs enhancement)
+        """
+        try:
+            league_info = self.LEAGUES.get(league_name)
+            if not league_info or not league_info.get('understat'):
+                return []
+
+            # Understat fixture parsing is complex (embedded in JavaScript)
+            # Placeholder for future enhancement
+            logger.debug(f"Understat fixtures not yet implemented for {league_name}")
+            return []
+        except Exception as e:
+            logger.debug(f"Understat fixture error: {str(e)}")
+            return []
+
     def scrape_league_fixtures(self, league_name: str, hours_ahead: int = 24) -> List[Dict]:
         """
-        Scrape upcoming fixtures for any league with multiple URL fallback
+        Scrape upcoming fixtures with MULTIPLE SOURCE FALLBACK
+
+        Priority: Understat → FBref (3 URLs) → Other sources
 
         Args:
             league_name: Name of league from LEAGUES dict
@@ -933,6 +958,18 @@ class FootballXGScraper:
                 logger.error(f"League '{league_name}' not found in database")
                 return []
 
+            # SOURCE 1: Try Understat (Top 5 leagues only)
+            if league_info.get('understat'):
+                logger.info(f"🔍 [1/2] Trying Understat for {league_name} fixtures...")
+                fixtures = self.scrape_understat_fixtures(league_name)
+                if fixtures:
+                    logger.info(f"✅ Got {len(fixtures)} fixtures from Understat")
+                    return fixtures
+                logger.info(f"⚠️ Understat unavailable, trying FBref...")
+
+            # SOURCE 2: Try FBref with multiple URL formats
+            logger.info(f"🔍 [2/2] Trying FBref for {league_name} fixtures...")
+
             fbref_id = league_info['fbref_id']
             fbref_name = league_info['fbref_name']
 
@@ -943,29 +980,28 @@ class FootballXGScraper:
                 f"https://fbref.com/en/comps/{fbref_id}",
             ]
 
-            logger.info(f"🔍 Fetching {league_name} fixtures from FBref...")
-
             response = None
             successful_url = None
 
             for attempt, url in enumerate(urls_to_try, 1):
-                logger.debug(f"Trying URL format {attempt}/{len(urls_to_try)}: {url}")
+                logger.debug(f"Trying FBref URL {attempt}/{len(urls_to_try)}")
                 response = self._fetch_with_retry(url, max_retries=2, timeout=15)
                 if response:
                     successful_url = url
-                    logger.info(f"✅ Successfully fetched from URL format {attempt}")
+                    logger.info(f"✅ FBref URL format {attempt} succeeded")
                     break
                 else:
-                    logger.warning(f"URL format {attempt} failed, trying next...")
+                    logger.warning(f"FBref URL format {attempt} failed")
 
             if not response:
-                logger.error(f"All {len(urls_to_try)} URL formats failed for {league_name}")
-                print(f"⚠️  Could not fetch fixtures from any FBref URL")
+                logger.error(f"ALL fixture sources failed for {league_name}")
+                print(f"⚠️  Could not fetch fixtures from ANY source:")
+                print(f"   • Understat: Not available or parsing not implemented")
+                print(f"   • FBref (3 URLs): All blocked (403 Forbidden)")
                 print(f"💡 TROUBLESHOOTING:")
-                print(f"   • FBref blocks datacenter/VPS IPs (403 Forbidden)")
-                print(f"   • Run from your home network (residential IP) for best results")
-                print(f"   • Script will continue with next league...")
-                print(f"   • Demo mode (option 3) always works for testing")
+                print(f"   • FBref blocks datacenter/VPS IPs")
+                print(f"   • Solution: Run from home network (residential IP)")
+                print(f"   • Demo mode (option 3) always works")
                 return []
 
             soup = BeautifulSoup(response.content, 'html.parser')
