@@ -22,3 +22,6 @@ Thumbs.db
 *.json
 *.csv
 fetch_test_*.html
+fixture_source_*.txt
+fixture_source_*.json
+test_run_output.log
