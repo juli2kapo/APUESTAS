@@ -35,6 +35,7 @@ import logging
 from concurrent.futures import ThreadPoolExecutor
 from difflib import get_close_matches
 import random
+import os
 
 # Setup logging
 logging.basicConfig(
@@ -247,7 +248,7 @@ class FootballXGScraper:
         },
     }
 
-    def __init__(self):
+    def __init__(self, football_data_api_key: str = None):
         # Pool of realistic User-Agents for rotation
         self.user_agents = [
             'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -271,6 +272,9 @@ class FootballXGScraper:
         }
         self.session = requests.Session()
         self.session.headers.update(self.headers)
+
+        # API Keys (optional - provided by user or environment variable)
+        self.football_data_api_key = football_data_api_key or os.getenv('FOOTBALL_DATA_API_KEY')
 
         # Configurable league averages (can be set by user)
         self.league_avg_xg = None
@@ -916,6 +920,89 @@ class FootballXGScraper:
         except Exception as e:
             return False
 
+    def fetch_football_data_api_fixtures(self, league_name: str) -> List[Dict]:
+        """
+        Fetch fixtures from Football-Data.org API (requires free API key)
+
+        Args:
+            league_name: Name of league
+
+        Returns:
+            List of fixtures with team names
+        """
+        if not self.football_data_api_key:
+            logger.debug("Football-Data.org API key not configured")
+            return []
+
+        try:
+            # Map our league names to Football-Data.org competition codes
+            fd_league_map = {
+                'Premier League': 'PL',
+                'La Liga': 'PD',
+                'Serie A': 'SA',
+                'Bundesliga': 'BL1',
+                'Ligue 1': 'FL1',
+                'UEFA Champions League': 'CL',
+                'UEFA Europa League': 'EL',
+                'UEFA Europa Conference League': 'EC',
+            }
+
+            league_code = fd_league_map.get(league_name)
+            if not league_code:
+                logger.debug(f"Football-Data.org doesn't cover {league_name}")
+                return []
+
+            logger.info(f"🔍 [1/3] Trying Football-Data.org API for {league_name}...")
+
+            url = f"https://api.football-data.org/v4/competitions/{league_code}/matches"
+            headers = {
+                'X-Auth-Token': self.football_data_api_key
+            }
+
+            response = requests.get(url, headers=headers, timeout=10)
+
+            if response.status_code == 200:
+                data = response.json()
+                fixtures = []
+                now = datetime.now()
+                cutoff = now + timedelta(hours=24)
+
+                for match in data.get('matches', []):
+                    utc_date_str = match.get('utcDate')
+                    if not utc_date_str:
+                        continue
+
+                    match_date = datetime.fromisoformat(utc_date_str.replace('Z', '+00:00'))
+                    match_date = match_date.replace(tzinfo=None)  # Remove timezone for comparison
+
+                    if now <= match_date <= cutoff:
+                        fixtures.append({
+                            'home_team': match['homeTeam']['name'],
+                            'away_team': match['awayTeam']['name'],
+                            'date': match_date.strftime('%Y-%m-%d %H:%M')
+                        })
+
+                if fixtures:
+                    logger.info(f"✅ Got {len(fixtures)} fixtures from Football-Data.org API")
+                    return fixtures
+                else:
+                    logger.info(f"No fixtures in next 24h from Football-Data.org")
+                    return []
+
+            elif response.status_code == 429:
+                logger.warning("Football-Data.org rate limit exceeded")
+                return []
+            elif response.status_code == 403:
+                logger.warning("Football-Data.org API key invalid or expired")
+                return []
+            else:
+                logger.warning(f"Football-Data.org API error: {response.status_code}")
+                return []
+
+        except Exception as e:
+            logger.error(f"Football-Data.org API error: {str(e)}")
+            return []
+
     def scrape_understat_fixtures(self, league_name: str) -> List[Dict]:
         """
         Try to get fixtures from Understat (Top 5 leagues only)
@@ -943,7 +1030,7 @@ class FootballXGScraper:
         """
         Scrape upcoming fixtures with MULTIPLE SOURCE FALLBACK
 
-        Priority: Understat → FBref (3 URLs) → Other sources
+        Priority: Football-Data.org API → Understat → FBref (3 URLs)
 
         Args:
             league_name: Name of league from LEAGUES dict
@@ -958,17 +1045,23 @@ class FootballXGScraper:
                 logger.error(f"League '{league_name}' not found in database")
                 return []
 
-            # SOURCE 1: Try Understat (Top 5 leagues only)
+            # SOURCE 1: Try Football-Data.org API (if API key configured)
+            if self.football_data_api_key:
+                fixtures = self.fetch_football_data_api_fixtures(league_name)
+                if fixtures:
+                    return fixtures
+
+            # SOURCE 2: Try Understat (Top 5 leagues only)
             if league_info.get('understat'):
-                logger.info(f"🔍 [1/2] Trying Understat for {league_name} fixtures...")
+                logger.info(f"🔍 [2/3] Trying Understat for {league_name} fixtures...")
                 fixtures = self.scrape_understat_fixtures(league_name)
                 if fixtures:
                     logger.info(f"✅ Got {len(fixtures)} fixtures from Understat")
                     return fixtures
                 logger.info(f"⚠️ Understat unavailable, trying FBref...")
 
-            # SOURCE 2: Try FBref with multiple URL formats
-            logger.info(f"🔍 [2/2] Trying FBref for {league_name} fixtures...")
+            # SOURCE 3: Try FBref with multiple URL formats
+            logger.info(f"🔍 [3/3] Trying FBref for {league_name} fixtures...")
 
             fbref_id = league_info['fbref_id']
             fbref_name = league_info['fbref_name']
@@ -995,13 +1088,22 @@ class FootballXGScraper:
 
             if not response:
                 logger.error(f"ALL fixture sources failed for {league_name}")
-                print(f"⚠️  Could not fetch fixtures from ANY source:")
+                print(f"\n⚠️  Could not fetch fixtures from ANY source:")
+                if self.football_data_api_key:
+                    print(f"   • Football-Data.org API: Not available for this league or rate limited")
+                else:
+                    print(f"   • Football-Data.org API: Not configured (see API_SETUP.md)")
                 print(f"   • Understat: Not available or parsing not implemented")
                 print(f"   • FBref (3 URLs): All blocked (403 Forbidden)")
-                print(f"💡 TROUBLESHOOTING:")
-                print(f"   • FBref blocks datacenter/VPS IPs")
-                print(f"   • Solution: Run from home network (residential IP)")
-                print(f"   • Demo mode (option 3) always works")
+                print(f"\n💡 SOLUTION:")
+                print(f"   ✅ Get a FREE API key from Football-Data.org (works from anywhere!)")
+                print(f"      1. Register at: https://www.football-data.org/client/register")
+                print(f"      2. Get your API token")
+                print(f"      3. Set: export FOOTBALL_DATA_API_KEY='your-key'")
+                print(f"      4. Re-run this script")
+                print(f"   📖 Full instructions: See API_SETUP.md")
+                print(f"\n   Alternative: Run from home network (residential IP)")
+                print(f"   Demo mode (option 3) always works for testing\n")
                 return []
 
             soup = BeautifulSoup(response.content, 'html.parser')
