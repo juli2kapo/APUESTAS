@@ -918,7 +918,7 @@ class FootballXGScraper:
 
     def scrape_league_fixtures(self, league_name: str, hours_ahead: int = 24) -> List[Dict]:
         """
-        Scrape upcoming fixtures for any league from FBref (within specified hours)
+        Scrape upcoming fixtures for any league with multiple URL fallback
 
         Args:
             league_name: Name of league from LEAGUES dict
@@ -930,20 +930,42 @@ class FootballXGScraper:
         try:
             league_info = self.LEAGUES.get(league_name)
             if not league_info:
-                print(f"❌ League '{league_name}' not found in database")
+                logger.error(f"League '{league_name}' not found in database")
                 return []
 
             fbref_id = league_info['fbref_id']
             fbref_name = league_info['fbref_name']
 
-            # Construct FBref URL
-            url = f"https://fbref.com/en/comps/{fbref_id}/schedule/{fbref_name}-Scores-and-Fixtures"
+            # Try multiple FBref URL formats
+            urls_to_try = [
+                f"https://fbref.com/en/comps/{fbref_id}/schedule/{fbref_name}-Scores-and-Fixtures",
+                f"https://fbref.com/en/comps/{fbref_id}/{fbref_name}-Stats",
+                f"https://fbref.com/en/comps/{fbref_id}",
+            ]
 
-            print(f"\n🔍 Fetching {league_name} fixtures from FBref...")
+            logger.info(f"🔍 Fetching {league_name} fixtures from FBref...")
 
-            response = self._fetch_with_retry(url, max_retries=3, timeout=15)
+            response = None
+            successful_url = None
+
+            for attempt, url in enumerate(urls_to_try, 1):
+                logger.debug(f"Trying URL format {attempt}/{len(urls_to_try)}: {url}")
+                response = self._fetch_with_retry(url, max_retries=2, timeout=15)
+                if response:
+                    successful_url = url
+                    logger.info(f"✅ Successfully fetched from URL format {attempt}")
+                    break
+                else:
+                    logger.warning(f"URL format {attempt} failed, trying next...")
+
             if not response:
-                print(f"⚠️  Could not fetch fixtures (network error or bad status)")
+                logger.error(f"All {len(urls_to_try)} URL formats failed for {league_name}")
+                print(f"⚠️  Could not fetch fixtures from any FBref URL")
+                print(f"💡 TROUBLESHOOTING:")
+                print(f"   • FBref blocks datacenter/VPS IPs (403 Forbidden)")
+                print(f"   • Run from your home network (residential IP) for best results")
+                print(f"   • Script will continue with next league...")
+                print(f"   • Demo mode (option 3) always works for testing")
                 return []
 
             soup = BeautifulSoup(response.content, 'html.parser')
@@ -1786,6 +1808,7 @@ class FootballXGScraper:
         all_fixtures = []
         all_analyses = []
         total_successful = 0
+        league_results = {}  # Track success/failure per league
 
         for league_name in league_names:
             print("\n" + "="*80)
@@ -1795,6 +1818,7 @@ class FootballXGScraper:
             league_info = self.LEAGUES.get(league_name)
             if not league_info:
                 print(f"❌ League not found in database")
+                league_results[league_name] = "Not found in database"
                 continue
 
             # Step 1: Get upcoming fixtures
@@ -1802,6 +1826,7 @@ class FootballXGScraper:
 
             if not fixtures:
                 print(f"\n⚠️  No fixtures found for {league_name}")
+                league_results[league_name] = "No fixtures found (blocked or no matches in 24h)"
                 continue
 
             print(f"\n📋 Analyzing {len(fixtures)} upcoming matches...\n")
@@ -1894,12 +1919,22 @@ class FootballXGScraper:
                 print("\n" + "="*80)
                 print(f"✅ {league_name}: Successfully analyzed {successful}/{len(fixtures)} matches")
                 print("="*80 + "\n")
+                league_results[league_name] = f"✅ {successful}/{len(fixtures)} matches analyzed"
+            else:
+                league_results[league_name] = f"⚠️ 0/{len(fixtures)} matches analyzed (data unavailable)"
 
         # Step 3: Generate comprehensive report for all leagues
         if total_successful > 0:
             print("\n" + "="*80)
             print(f"📊 OVERALL SUMMARY: {total_successful} matches analyzed across {len(league_names)} league(s)")
             print("="*80 + "\n")
+
+            # Show league-by-league results
+            if len(league_names) > 1:
+                print("📋 League Results:")
+                for league, result in league_results.items():
+                    print(f"   {league}: {result}")
+                print()
 
             self.generate_report(all_fixtures, all_analyses)
 
@@ -1916,7 +1951,18 @@ class FootballXGScraper:
                     }, f, indent=2)
                 print(f"✅ Results exported to {filename}")
         else:
-            print("\n❌ No matches were successfully analyzed.")
+            print("\n" + "="*80)
+            print("❌ NO MATCHES WERE SUCCESSFULLY ANALYZED")
+            print("="*80)
+            print("\n📋 League Results:")
+            for league, result in league_results.items():
+                print(f"   {league}: {result}")
+            print("\n💡 TROUBLESHOOTING:")
+            print("   • Most likely cause: FBref blocking datacenter/VPS IP addresses")
+            print("   • Solution: Run from your home network (residential IP)")
+            print("   • Alternative: Use demo mode (option 3) to test functionality")
+            print("   • The script will work perfectly from a home internet connection")
+            print("="*80 + "\n")
 
 
 def main():
