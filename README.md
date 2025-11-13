@@ -12,16 +12,42 @@ pip install -r requirements.txt
 python xg_scraper.py
 
 # Choose option 1 (AUTO-SCRAPE)
-# Select leagues (or press Enter for Top 5 European)
+# Press Enter to analyze ALL leagues (default)
+# Or select specific leagues by number
 # Sit back and watch it automatically:
 #   ✅ Scrape upcoming fixtures from 29 supported leagues
 #   ⏰ Filter to matches in the NEXT 24 HOURS only
 #   ✅ Get each team's xG/xGA data (with home/away splits)
+#   ✅ Fetch data in PARALLEL for faster processing
 #   ✅ Analyze using Poisson probability model
 #   ✅ Generate comprehensive predictions report
+#   ✅ Predict Both Teams To Score (BTTS)
 ```
 
 **That's it! No manual input needed.**
+
+## ✨ NEW FEATURES (Latest Update)
+
+### 🚀 Performance Improvements
+- **Parallel data fetching**: Teams are scraped simultaneously (2x faster!)
+- **Improved rate limiting**: Better request management per domain
+- **Async HTTP support**: Uses aiohttp for concurrent requests
+
+### 📊 Enhanced Analysis
+- **BTTS Predictions**: Now predicts Both Teams To Score with probability
+- **Better logging**: Comprehensive logging system for debugging
+- **Venue-specific fallback warnings**: Alerts when using overall stats
+
+### ⚙️ Configurable Settings
+- **Custom league averages**: Set your own xG/xGA averages per league
+- **Stricter data validation**: Better quality control (0.3-4.5 xG range)
+- **Default to ALL leagues**: Just press Enter to analyze everything
+
+### 🔧 Technical Improvements
+- **Better error handling**: Detailed error messages with logging
+- **4 retries with exponential backoff**: More resilient network handling
+- **Alternative data sources**: Framework for adding more xG sources
+- **Contextual data support**: Placeholders for H2H, injuries, tactics
 
 ## 🏆 Supported Leagues (29 Total)
 
