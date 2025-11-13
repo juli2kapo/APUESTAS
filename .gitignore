@@ -21,3 +21,4 @@ Thumbs.db
 # Generated files
 *.json
 *.csv
+fetch_test_*.html
