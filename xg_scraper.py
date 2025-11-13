@@ -1896,8 +1896,9 @@ def main():
     print("1. 🤖 AUTO-SCRAPE - Automatically scrape & analyze upcoming matches")
     print("2. ✍️  Manual entry - Enter team stats directly")
     print("3. 📊 Demo mode - See sample predictions")
+    print("4. 📁 Load from file - Analyze fixtures from a JSON file (for blocked networks)")
 
-    mode = input("\nEnter choice (1-3): ").strip() or "1"
+    mode = input("\nEnter choice (1-4): ").strip() or "1"
 
     if mode == "1":
         # AUTO-SCRAPE MODE - Main feature!
@@ -2142,6 +2143,83 @@ def main():
         ]
 
         scraper.generate_report(fixtures, analyses)
+
+    elif mode == "4":
+        # Load fixtures from JSON file
+        import os
+        import json
+
+        print("\n" + "="*80)
+        print("📁 LOAD FIXTURES FROM FILE MODE")
+        print("="*80)
+        print("\nThis mode is for networks that block live fixture sources.")
+        print("You can manually create a fixtures.json file or download it elsewhere.")
+        print()
+        print("Expected format (see fixtures_template.json):")
+        print("""[
+  {
+    "league": "Premier League",
+    "date": "2025-11-13 20:00",
+    "home_team": "Manchester City",
+    "away_team": "Liverpool"
+  }
+]""")
+        print()
+
+        filename = input("Enter fixtures file path (default: fixtures.json): ").strip() or "fixtures.json"
+
+        if not os.path.exists(filename):
+            print(f"\n❌ File not found: {filename}")
+            print("💡 Create a file using the format above, or copy fixtures_template.json")
+            return
+
+        try:
+            with open(filename, 'r') as f:
+                fixtures = json.load(f)
+
+            print(f"\n✅ Loaded {len(fixtures)} fixtures from {filename}")
+
+            # Process each fixture
+            all_analyses = []
+            successful = 0
+
+            for i, fixture in enumerate(fixtures, 1):
+                league = fixture.get('league', 'Unknown')
+                home_team = fixture.get('home_team', '')
+                away_team = fixture.get('away_team', '')
+                match_date = fixture.get('date', '')
+
+                print("\n" + "="*80)
+                print(f"📊 Match {i}/{len(fixtures)}: {league}")
+                print(f"   {home_team} vs {away_team}")
+                print(f"   {match_date}")
+                print("="*80)
+
+                # Try to get team data
+                home_data = scraper.get_team_xg_data(home_team, league)
+                away_data = scraper.get_team_xg_data(away_team, league)
+
+                if home_data and away_data:
+                    analysis = scraper.analyze_over_under_advanced(home_data, away_data)
+                    all_analyses.append(analysis)
+                    successful += 1
+
+                    # Show prediction
+                    print(f"\n🎯 Prediction: {analysis['prediction']}")
+                    print(f"📊 Confidence: {analysis['confidence']:.1f}%")
+                    print(f"🎲 Expected total goals: {analysis.get('expected_total', 0):.2f}")
+                else:
+                    print(f"\n⚠️  SKIPPED - No xG data available for one or both teams")
+
+            print("\n" + "="*80)
+            print(f"✅ Successfully analyzed: {successful}/{len(fixtures)} matches")
+            print("="*80)
+
+        except json.JSONDecodeError as e:
+            print(f"\n❌ Error parsing JSON file: {e}")
+            print("💡 Make sure the file is valid JSON format")
+        except Exception as e:
+            print(f"\n❌ Error loading fixtures: {e}")
 
 
 if __name__ == "__main__":
