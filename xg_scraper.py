@@ -33,6 +33,8 @@ import asyncio
 import aiohttp
 import logging
 from concurrent.futures import ThreadPoolExecutor
+from difflib import get_close_matches
+import random
 
 # Setup logging
 logging.basicConfig(
@@ -246,8 +248,20 @@ class FootballXGScraper:
     }
 
     def __init__(self):
+        # Pool of realistic User-Agents for rotation
+        self.user_agents = [
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36',
+            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0',
+            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.1 Safari/605.1.15',
+            'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Edge/120.0.0.0',
+            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36',
+        ]
+
         self.headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'User-Agent': random.choice(self.user_agents),
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
             'Accept-Language': 'en-US,en;q=0.5',
             'Accept-Encoding': 'gzip, deflate, br',
@@ -265,6 +279,12 @@ class FootballXGScraper:
         # Rate limiting
         self.last_request_time = {}
         self.min_request_interval = 1.0  # seconds between requests to same domain
+
+    def _rotate_user_agent(self):
+        """Rotate User-Agent to reduce bot detection"""
+        new_ua = random.choice(self.user_agents)
+        self.session.headers.update({'User-Agent': new_ua})
+        logger.debug(f"Rotated User-Agent to: {new_ua[:50]}...")
 
     def _rate_limit(self, url: str):
         """Enforce rate limiting per domain"""
@@ -292,6 +312,9 @@ class FootballXGScraper:
         """
         for attempt in range(max_retries):
             try:
+                # Rotate User-Agent for each request to reduce bot detection
+                self._rotate_user_agent()
+
                 # Rate limiting
                 self._rate_limit(url)
 
@@ -454,21 +477,42 @@ class FootballXGScraper:
 
             # Find the team's link in the standings/team list
             team_link = None
+
+            # First, collect all available team names from the page
+            available_teams = {}
             for link in soup.find_all('a'):
-                if link.text.strip().lower() == team_name.lower():
-                    href = link.get('href', '')
-                    if '/squads/' in href:
+                href = link.get('href', '')
+                if '/squads/' in href:
+                    link_text = link.text.strip()
+                    if link_text:  # Not empty
+                        available_teams[link_text] = href
+
+            logger.debug(f"Found {len(available_teams)} teams on FBref page")
+
+            # Try exact match first
+            for available_team, href in available_teams.items():
+                if team_name.lower() == available_team.lower():
+                    team_link = href
+                    logger.debug(f"Exact match: '{team_name}' -> '{available_team}'")
+                    break
+
+            # If no exact match, try fuzzy matching
+            if not team_link:
+                matched_team = self.fuzzy_match_team_name(team_name, list(available_teams.keys()), threshold=0.7)
+                if matched_team:
+                    team_link = available_teams[matched_team]
+                    logger.info(f"Using fuzzy match: '{team_name}' -> '{matched_team}'")
+
+            # If still no match, try partial substring match as last resort
+            if not team_link:
+                for available_team, href in available_teams.items():
+                    if team_name.lower() in available_team.lower() or available_team.lower() in team_name.lower():
                         team_link = href
+                        logger.info(f"Using partial match: '{team_name}' -> '{available_team}'")
                         break
 
             if not team_link:
-                # Try partial match
-                for link in soup.find_all('a'):
-                    if team_name.lower() in link.text.strip().lower() and '/squads/' in link.get('href', ''):
-                        team_link = link.get('href')
-                        break
-
-            if not team_link:
+                logger.warning(f"No match found for '{team_name}' on FBref")
                 return {}
 
             # Get team page
@@ -714,6 +758,41 @@ class FootballXGScraper:
             result['away_matches'] = away_count
 
         return result
+
+    def fuzzy_match_team_name(self, team_name: str, available_teams: List[str], threshold: float = 0.6) -> Optional[str]:
+        """
+        Fuzzy match team name against a list of available teams
+
+        Args:
+            team_name: The team name to match
+            available_teams: List of available team names
+            threshold: Minimum similarity ratio (0.0 to 1.0, default 0.6)
+
+        Returns:
+            Best matching team name, or None if no good match found
+        """
+        if not available_teams:
+            return None
+
+        # Try exact match first (case-insensitive)
+        for available_team in available_teams:
+            if team_name.lower() == available_team.lower():
+                logger.debug(f"Exact match found: '{team_name}' -> '{available_team}'")
+                return available_team
+
+        # Try fuzzy matching
+        matches = get_close_matches(team_name.lower(), [t.lower() for t in available_teams], n=1, cutoff=threshold)
+
+        if matches:
+            # Find the original case version
+            match_lower = matches[0]
+            for available_team in available_teams:
+                if available_team.lower() == match_lower:
+                    logger.info(f"Fuzzy match found: '{team_name}' -> '{available_team}' (similarity: {threshold:.2f}+)")
+                    return available_team
+
+        logger.warning(f"No fuzzy match found for '{team_name}' (threshold: {threshold})")
+        return None
 
     def normalize_team_name(self, team_name: str) -> str:
         """

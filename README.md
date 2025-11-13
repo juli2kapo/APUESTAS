@@ -32,11 +32,13 @@ python xg_scraper.py
 - **Parallel data fetching**: Teams are scraped simultaneously (2x faster!)
 - **Improved rate limiting**: Better request management per domain
 - **Async HTTP support**: Uses aiohttp for concurrent requests
+- **User-Agent rotation**: 8 different User-Agents rotated per request to reduce bot detection
 
 ### 📊 Enhanced Analysis
 - **BTTS Predictions**: Now predicts Both Teams To Score with probability
 - **Better logging**: Comprehensive logging system for debugging
 - **Venue-specific fallback warnings**: Alerts when using overall stats
+- **Fuzzy team name matching**: Automatically handles team name variations
 
 ### ⚙️ Configurable Settings
 - **Custom league averages**: Set your own xG/xGA averages per league
@@ -48,6 +50,8 @@ python xg_scraper.py
 - **4 retries with exponential backoff**: More resilient network handling
 - **Alternative data sources**: Framework for adding more xG sources
 - **Contextual data support**: Placeholders for H2H, injuries, tactics
+- **Intelligent team matching**: Uses difflib for fuzzy string matching (70% similarity threshold)
+- **Multi-level fallback**: Exact match → Fuzzy match → Partial match → Skip
 
 ## 🏆 Supported Leagues (29 Total)
 
