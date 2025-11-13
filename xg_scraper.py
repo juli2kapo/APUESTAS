@@ -671,6 +671,74 @@ class FootballXGScraper:
         except Exception as e:
             return False
 
+    def scrape_openfootball_github(self, league_name: str, hours_ahead: int = 24) -> List[Dict]:
+        """
+        Fetch fixtures from OpenFootball GitHub (FREE, NO API KEY, PUBLIC DOMAIN!)
+        https://github.com/openfootball/football.json
+        """
+        # Map league names to OpenFootball file paths
+        league_file_map = {
+            'Premier League': '2024-25/en.1.json',
+            'La Liga': '2024-25/es.1.json',
+            'Bundesliga': '2024-25/de.1.json',
+            'Serie A': '2024-25/it.1.json',
+            'Ligue 1': '2024-25/fr.1.json',
+            'UEFA Champions League': '2024-25/uefa.cl.json',
+            'Liga MX': '2024-25/mx.1.json',
+            'EFL Championship': '2024-25/en.2.json',
+            'EFL League One': '2024-25/en.3.json',
+            'EFL League Two': '2024-25/en.4.json'
+        }
+
+        file_path = league_file_map.get(league_name)
+        if not file_path:
+            return []
+
+        try:
+            url = f'https://raw.githubusercontent.com/openfootball/football.json/master/{file_path}'
+
+            response = self.session.get(url, timeout=10)
+
+            if response.status_code != 200:
+                return []
+
+            data = response.json()
+            fixtures = []
+            now = datetime.now()
+            cutoff_time = now + timedelta(hours=hours_ahead)
+
+            for match in data.get('matches', []):
+                # Skip matches that already have scores (completed)
+                if match.get('score'):
+                    continue
+
+                date_str = match.get('date', '')
+                time_str = match.get('time', '12:00')  # Default to noon if no time
+
+                if not date_str:
+                    continue
+
+                try:
+                    # Parse date and time
+                    match_datetime_str = f"{date_str} {time_str}"
+                    match_date = datetime.strptime(match_datetime_str, "%Y-%m-%d %H:%M")
+
+                    # Only upcoming matches within time window
+                    if now <= match_date <= cutoff_time:
+                        fixtures.append({
+                            'date': match_date.strftime('%Y-%m-%d %H:%M'),
+                            'home_team': match.get('team1', ''),
+                            'away_team': match.get('team2', ''),
+                            'league': league_name
+                        })
+                except Exception as e:
+                    continue
+
+            return fixtures
+
+        except Exception as e:
+            return []
+
     def scrape_api_football(self, league_name: str, hours_ahead: int = 24) -> List[Dict]:
         """
         Fetch fixtures from API-Football (API-Sports)
@@ -978,16 +1046,24 @@ class FootballXGScraper:
         """
         print(f"\n🔍 Fetching {league_name} fixtures...")
 
-        # Try ESPN API first (no key needed, always works for supported leagues)
-        print(f"  1️⃣  ESPN API...", end=' ')
+        # Try OpenFootball GitHub first (FREE, WORKS PERFECTLY, NO API KEY!)
+        print(f"  1️⃣  OpenFootball (GitHub)...", end=' ')
+        fixtures = self.scrape_openfootball_github(league_name, hours_ahead)
+        if fixtures:
+            print(f"✅ {len(fixtures)} fixtures")
+            return fixtures
+        print(f"❌")
+
+        # Try ESPN API
+        print(f"  2️⃣  ESPN API...", end=' ')
         fixtures = self.scrape_espn_api(league_name, hours_ahead)
         if fixtures:
             print(f"✅ {len(fixtures)} fixtures")
             return fixtures
         print(f"❌")
 
-        # Try TheSportsDB (free tier)
-        print(f"  2️⃣  TheSportsDB...", end=' ')
+        # Try TheSportsDB
+        print(f"  3️⃣  TheSportsDB...", end=' ')
         fixtures = self.scrape_thesportsdb_api(league_name, hours_ahead)
         if fixtures:
             print(f"✅ {len(fixtures)} fixtures")
@@ -995,7 +1071,7 @@ class FootballXGScraper:
         print(f"❌")
 
         # Try Football-Data.org
-        print(f"  3️⃣  Football-Data.org...", end=' ')
+        print(f"  4️⃣  Football-Data.org...", end=' ')
         fixtures = self.scrape_football_data_api(league_name, hours_ahead)
         if fixtures:
             print(f"✅ {len(fixtures)} fixtures")
@@ -1004,7 +1080,7 @@ class FootballXGScraper:
 
         # Try API-Football if key is set
         if self.api_football_key:
-            print(f"  4️⃣  API-Football...", end=' ')
+            print(f"  5️⃣  API-Football...", end=' ')
             fixtures = self.scrape_api_football(league_name, hours_ahead)
             if fixtures:
                 print(f"✅ {len(fixtures)} fixtures")
@@ -1616,16 +1692,17 @@ class FootballXGScraper:
         print(f"⏰ Filtering: Only matches in the NEXT 24 HOURS")
         print(f"📋 Analyzing {len(league_names)} league(s):")
         print(f"\n🔍 MULTI-SOURCE DATA STRATEGY (No Fictitious Data!):")
-        print(f"  📅 Fixtures: ESPN → TheSportsDB → Football-Data → FBref")
+        print(f"  📅 Fixtures: OpenFootball → ESPN → TheSportsDB → Football-Data → FBref")
         print(f"  📊 Team Stats: Understat (Top 5) → FBref")
         print(f"  ❌  If NO real data found → SKIP GAME")
-        print(f"\n✅ Active sources:")
-        print(f"   • ESPN API (public, no key needed)")
-        print(f"   • TheSportsDB (free tier)")
+        print(f"\n✅ Active fixture sources:")
+        print(f"   🏆 OpenFootball GitHub (FREE, PUBLIC DOMAIN, NO KEY)")
+        print(f"   • ESPN API (public)")
+        print(f"   • TheSportsDB (free)")
         if self.football_data_api_key:
-            print(f"   • Football-Data.org (configured)")
+            print(f"   • Football-Data.org")
         if self.api_football_key:
-            print(f"   • API-Football (1000+ leagues)")
+            print(f"   • API-Football")
         print(f"   • FBref scraping (fallback)")
         print()
         for league in league_names:
