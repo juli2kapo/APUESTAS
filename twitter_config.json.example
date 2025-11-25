@@ -1,0 +1,12 @@
+{
+  "twitter_username": "your_twitter_username",
+  "twitter_password": "your_twitter_password",
+  "twitter_email": "your_email@example.com",
+  "twitter_handle": "@your_handle",
+  "claude_api_key": "sk-ant-api03-...",
+  "check_interval_seconds": 60,
+  "max_thread_length": 20,
+  "response_temperature": 0.7,
+  "bot_persona": "You are a helpful AI assistant that provides insightful analysis about football statistics and predictions. Be concise, friendly, and data-driven.",
+  "headless": true
+}

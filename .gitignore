@@ -19,5 +19,11 @@ ENV/
 Thumbs.db
 
 # Generated files
-*.json
 *.csv
+
+# Twitter bot sensitive files
+twitter_config.json
+processed_tweets.json
+
+# Keep example config
+!twitter_config.json.example
